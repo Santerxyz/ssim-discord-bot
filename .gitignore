@@ -1,0 +1,14 @@
+# deps + build output
+node_modules/
+dist/
+
+# SECRETS — never commit
+.env
+
+# local persistence (tickets, counters, lastAnnouncedVersion, rate-limit/audit)
+data/
+
+# logs / misc
+*.log
+npm-debug.log*
+.DS_Store

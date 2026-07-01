@@ -8,19 +8,21 @@ import { formatReleaseDate, sanitizeNotes } from './util';
 export interface ReleasePost {
   version: string;
   notes?: string;
-  url?: string;
   publishedAt?: string;
+  downloadsMention?: string; // channel mention "<#id>" where the downloads live
 }
 
 /**
- * Owner's style (matches the hand-posted screenshots):
+ * The updates-channel message:
  *
- *   **SSIM • v1.3.1 • Jun 24 2026**
+ *   **SSIM • v1.3.4 • Jul 1 2026**
  *   ```diff
  *   + New: …
  *   - Fixed: …
  *   ```
- *   ⬇️ Manual update: https://license.ssim.dev/download/SSIM-1.3.1.exe
+ *   A manual update may be required for this version. Downloads: <#…>
+ *
+ * The actual download links live in the separate downloads channel (see announce.upsertDownloads).
  */
 export function formatReleasePost(p: ReleasePost): string {
   const date = formatReleaseDate(p.publishedAt);
@@ -28,6 +30,8 @@ export function formatReleasePost(p: ReleasePost): string {
   const lines = [header];
   const notes = (p.notes ?? '').trim();
   if (notes) lines.push('```diff\n' + sanitizeNotes(notes) + '\n```');
-  if (p.url) lines.push(`⬇️ Manual update: ${p.url}`);
+  lines.push(p.downloadsMention
+    ? `A manual update may be required for this version. Downloads: ${p.downloadsMention}`
+    : 'A manual update may be required for this version.');
   return lines.join('\n');
 }

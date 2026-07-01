@@ -20,10 +20,19 @@ export interface Ticket {
   warnedAt?: string;   // set when an inactivity warning was posted (auto-close grace window)
 }
 
+export interface PostRecord {
+  channelId: string;
+  messageId: string;
+  title: string;
+  message: string;
+}
+
 interface BotState {
   lastAnnouncedVersion: string;
   ticketCounter: number;
   tickets: Record<string, Ticket>;   // keyed by channelId
+  downloadsMessageId: string | null; // the single, edited-in-place "Downloads" message
+  posts: Record<string, PostRecord>; // named /post messages (editable later)
 }
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -37,6 +46,8 @@ function load(): BotState {
         lastAnnouncedVersion: String(raw.lastAnnouncedVersion || '0.0.0'),
         ticketCounter: Number(raw.ticketCounter || 0),
         tickets: raw.tickets && typeof raw.tickets === 'object' ? raw.tickets : {},
+        downloadsMessageId: raw.downloadsMessageId || null,
+        posts: raw.posts && typeof raw.posts === 'object' ? raw.posts : {},
       };
     }
   } catch (err) {
@@ -44,7 +55,7 @@ function load(): BotState {
     logger.error('state.json unreadable — starting fresh', { err: (err as Error).message });
     try { fs.copyFileSync(FILE, `${FILE}.corrupt-${Date.now()}`); } catch { /* best effort */ }
   }
-  return { lastAnnouncedVersion: '0.0.0', ticketCounter: 0, tickets: {} };
+  return { lastAnnouncedVersion: '0.0.0', ticketCounter: 0, tickets: {}, downloadsMessageId: null, posts: {} };
 }
 
 class Store {
@@ -64,6 +75,12 @@ class Store {
   // ── announce idempotency ──
   get lastAnnouncedVersion(): string { return this.state.lastAnnouncedVersion; }
   setLastAnnouncedVersion(v: string): void { this.update((s) => { s.lastAnnouncedVersion = v; }); }
+
+  get downloadsMessageId(): string | null { return this.state.downloadsMessageId; }
+  setDownloadsMessageId(id: string): void { this.update((s) => { s.downloadsMessageId = id; }); }
+
+  getPost(name: string): PostRecord | undefined { return this.state.posts[name]; }
+  setPost(name: string, rec: PostRecord): void { this.update((s) => { s.posts[name] = rec; }); }
 
   // ── tickets ──
   nextTicketNumber(): number { return this.update((s) => (s.ticketCounter += 1)); }

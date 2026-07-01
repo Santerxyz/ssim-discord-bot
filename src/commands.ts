@@ -4,7 +4,7 @@
 //  /announce /panel). All are gated on the STAFF_ROLE in-handler.
 // ════════════════════════════════════════════════════════════════════════════
 import {
-  SlashCommandBuilder, REST, Routes, ChatInputCommandInteraction, TextChannel, PermissionFlagsBits,
+  SlashCommandBuilder, REST, Routes, ChatInputCommandInteraction, TextChannel, PermissionFlagsBits, ChannelType,
 } from 'discord.js';
 import { config } from './config';
 import { logger } from './logger';
@@ -15,6 +15,7 @@ import { audit } from './audit';
 import { announceNow } from './announce';
 import { store } from './store';
 import { closeTicket, addUser, removeUser, postPanel } from './tickets';
+import { handlePostCommand } from './post';
 
 // setDefaultMemberPermissions(ManageMessages) merely de-clutters the picker for non-staff; the real
 // gate is the STAFF_ROLE check in handleCommand (roles ≠ Discord perms).
@@ -44,6 +45,10 @@ export const commands = [
     .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('panel').setDescription('Staff: post the support/ticket panel here')
     .setDefaultMemberPermissions(staffPerm),
+  new SlashCommandBuilder().setName('post').setDescription('Staff: post or edit a bot message (embed)')
+    .addStringOption((o) => o.setName('name').setDescription('Short key to identify/edit this post later').setRequired(true))
+    .addChannelOption((o) => o.setName('channel').setDescription('Target channel (default: here)').addChannelTypes(ChannelType.GuildText).setRequired(false))
+    .setDefaultMemberPermissions(staffPerm),
 ].map((c) => c.toJSON());
 
 export async function registerCommands(): Promise<void> {
@@ -66,6 +71,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     case 'remove': return cmdAddRemove(interaction, false);
     case 'announce': return cmdAnnounce(interaction);
     case 'panel': return cmdPanel(interaction);
+    case 'post': return handlePostCommand(interaction);
     default: await interaction.reply({ ephemeral: true, content: 'Unknown command.' });
   }
 }

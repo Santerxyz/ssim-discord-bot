@@ -50,6 +50,7 @@ export const config = {
   guildId: req('GUILD_ID'),
   channels: {
     announce: opt('ANNOUNCE_CHANNEL_ID'),
+    downloads: opt('DOWNLOADS_CHANNEL_ID'),
     onboarding: req('ONBOARDING_CHANNEL_ID'),
     ticketCategory: req('TICKET_CATEGORY_ID'),
     audit: opt('AUDIT_CHANNEL_ID'),
@@ -60,6 +61,9 @@ export const config = {
     betaTester: req('BETA_TESTER_ROLE_ID'),
   },
   announceWebhookUrl: opt('ANNOUNCE_WEBHOOK_URL'),
+  // Full-install ZIP: a single FIXED download link shown in the downloads channel. Stays the same across
+  // releases; the bot uses it automatically. Set once in .env.
+  downloadZipUrl: opt('DOWNLOAD_ZIP_URL'),
   licenseApiUrl: req('LICENSE_API_URL').replace(/\/+$/, ''),
   botApiToken: req('BOT_API_TOKEN'),
   announceHmacSecret: opt('ANNOUNCE_HMAC_SECRET'),

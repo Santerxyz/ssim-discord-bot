@@ -9,11 +9,11 @@
 //  mutex + compare-after-fetch guarantee exactly-once, forward-only posts — so push
 //  and poll can never double-post, and the poll always catches a missed push.
 // ════════════════════════════════════════════════════════════════════════════
-import { WebhookClient, Client, TextChannel } from 'discord.js';
+import { WebhookClient, Client, TextChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { config } from './config';
 import { store } from './store';
 import { logger } from './logger';
-import { isNewer } from './util';
+import { isNewer, BRAND } from './util';
 import { formatReleasePost } from './format';
 import { licenseApi, VersionManifest } from './licenseApi';
 
@@ -23,12 +23,13 @@ export function bindAnnounceClient(c: Client): void { discordClient = c; }
 // Serialise every announce attempt (push + poll + manual) so they can't overlap.
 let chain: Promise<void> = Promise.resolve();
 
-async function post(manifest: VersionManifest): Promise<void> {
+async function postUpdate(manifest: VersionManifest): Promise<void> {
   const content = formatReleasePost({
-    version: manifest.latest, notes: manifest.notes, url: manifest.url, publishedAt: manifest.publishedAt,
+    version: manifest.latest, notes: manifest.notes, publishedAt: manifest.publishedAt,
+    downloadsMention: config.channels.downloads ? `<#${config.channels.downloads}>` : '',
   });
-  // Preferred: the "Santer" webhook → renders pixel-identically to the hand-posts. allowedMentions
-  // none so a stray @everyone in notes can never ping. Fall back to posting as the bot user.
+  // Preferred: the "Santer" webhook (posts pixel-identically). allowedMentions none so a stray
+  // @everyone in notes can never ping. Fall back to posting as the bot user in the announce channel.
   if (config.announceWebhookUrl) {
     const wh = new WebhookClient({ url: config.announceWebhookUrl });
     await wh.send({ content, username: 'Santer', allowedMentions: { parse: [] } });
@@ -39,6 +40,35 @@ async function post(manifest: VersionManifest): Promise<void> {
   } else {
     throw new Error('no ANNOUNCE_WEBHOOK_URL and no ANNOUNCE_CHANNEL_ID configured');
   }
+}
+
+// The downloads channel holds ONE message with two download buttons, edited IN PLACE each release:
+//   • Full install (ZIP) — first-time setup     • Update (EXE) — just this version
+async function upsertDownloads(manifest: VersionManifest): Promise<void> {
+  if (!discordClient || !config.channels.downloads) return;
+  const ch = await discordClient.channels.fetch(config.channels.downloads).catch(() => null);
+  if (!ch || !ch.isTextBased()) { logger.warn('downloads channel not usable'); return; }
+  const embed = new EmbedBuilder()
+    .setColor(BRAND)
+    .setTitle(`Downloads — SSIM v${manifest.latest}`)
+    .setDescription(
+      '**Full install (ZIP)** — download this for a first-time setup; it contains everything you need.\n' +
+      '**Update (EXE)** — installs just this version; use it to update an existing install.',
+    )
+    .setFooter({ text: `Current version: v${manifest.latest}` })
+    .setTimestamp();
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  if (config.downloadZipUrl) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Full install (ZIP)').setURL(config.downloadZipUrl));
+  if (manifest.url) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(`Update — v${manifest.latest} (EXE)`).setURL(manifest.url));
+  const payload = { embeds: [embed], components: row.components.length ? [row] : [] };
+
+  const existing = store.downloadsMessageId;
+  if (existing) {
+    const ok = await (ch as TextChannel).messages.edit(existing, payload).then(() => true).catch(() => false);
+    if (ok) return; // edited the existing message in place
+  }
+  const msg = await (ch as TextChannel).send(payload).catch((err) => { logger.error('downloads post failed', { err: (err as Error).message }); return null; });
+  if (msg) store.setDownloadsMessageId(msg.id);
 }
 
 /** Idempotent, forward-only. Re-fetches /version and posts iff it's newer than the last announced. */
@@ -53,7 +83,8 @@ export function maybeAnnounce(reason: string): Promise<void> {
     const last = store.lastAnnouncedVersion;
     if (!isNewer(latest, last)) { logger.debug(`announce(${reason}): v${latest} not newer than v${last} — skip`); return; }
     try {
-      await post(res.data);
+      await postUpdate(res.data);
+      await upsertDownloads(res.data);
       store.setLastAnnouncedVersion(latest);           // advance ONLY on a successful post
       logger.info(`announced v${latest} (${reason})`);
     } catch (err) {
@@ -68,7 +99,8 @@ export async function announceNow(): Promise<{ ok: boolean; version?: string; er
   const res = await licenseApi.getVersion();
   if (!res.ok || !res.data || !res.data.latest) return { ok: false, error: 'could not fetch /version' };
   try {
-    await post(res.data);
+    await postUpdate(res.data);
+    await upsertDownloads(res.data);
     store.setLastAnnouncedVersion(res.data.latest);
     return { ok: true, version: res.data.latest };
   } catch (err) {
@@ -82,14 +114,17 @@ export async function announceNow(): Promise<{ ok: boolean; version?: string; er
  * restart we reconcile once (in case a release landed while we were down), then poll forever.
  */
 export async function initAnnounce(): Promise<void> {
-  if (store.lastAnnouncedVersion === '0.0.0') {
-    const res = await licenseApi.getVersion();
-    if (res.ok && res.data && res.data.latest) {
+  const res = await licenseApi.getVersion();
+  if (res.ok && res.data && res.data.latest) {
+    if (store.lastAnnouncedVersion === '0.0.0') {
       store.setLastAnnouncedVersion(res.data.latest);
       logger.info(`announce baseline = v${res.data.latest} (first run — existing release not announced)`);
+      await upsertDownloads(res.data);                 // still publish the downloads message on first boot
+    } else if (isNewer(res.data.latest, store.lastAnnouncedVersion)) {
+      await maybeAnnounce('startup');                   // posts the update AND refreshes downloads
+    } else {
+      await upsertDownloads(res.data);                  // keep the downloads message current
     }
-  } else {
-    maybeAnnounce('startup');
   }
   setInterval(() => maybeAnnounce('poll'), config.pollIntervalMs).unref();
   logger.info(`announce poller every ${Math.round(config.pollIntervalMs / 1000)}s`);

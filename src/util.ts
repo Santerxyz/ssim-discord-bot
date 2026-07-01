@@ -4,8 +4,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 import crypto from 'node:crypto';
 
-/** Santer brand accent (#9333ea) — used on every embed. */
-export const BRAND = 0x9333ea;
+/** SSIM brand violet (#7e22ce — the app's brand.dark). Reads cleaner/less pink than the brighter
+ *  #9333ea as a Discord embed bar, while staying on-theme. Used on every embed. */
+export const BRAND = 0x7e22ce;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

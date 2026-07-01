@@ -17,6 +17,7 @@ import {
 import {
   onLicenseTicketOpen, handleReveal, handleGenerate, handleClaimModal, buildClaimModal,
 } from './licenseFlow';
+import { handlePostModal } from './post';
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
   try {
@@ -90,6 +91,7 @@ async function onCloseButton(interaction: ButtonInteraction): Promise<void> {
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 async function onModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (interaction.customId.startsWith('post:submit:')) return handlePostModal(interaction);
   if (interaction.customId === 'lic:claimModal') return handleClaimModal(interaction);
   if (interaction.customId === 'bug:modal') return onBugModal(interaction);
 }

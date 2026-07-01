@@ -15,7 +15,7 @@ import {
   categoryById, createTicket, claimTicket, closeTicket, buildBugModal, bugEmbed,
 } from './tickets';
 import {
-  onLicenseTicketOpen, handleReveal, handleClaimModal, buildClaimModal,
+  onLicenseTicketOpen, handleReveal, handleGenerate, handleClaimModal, buildClaimModal,
 } from './licenseFlow';
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
@@ -56,6 +56,7 @@ async function onOpenSelect(interaction: StringSelectMenuInteraction): Promise<v
 async function onButton(interaction: ButtonInteraction): Promise<void> {
   switch (interaction.customId) {
     case 'lic:reveal': return handleReveal(interaction);
+    case 'lic:generate': return handleGenerate(interaction);
     case 'lic:claim': return void (await interaction.showModal(buildClaimModal()));
     case 'ticket:claim': return onClaimButton(interaction);
     case 'ticket:close': return onCloseButton(interaction);

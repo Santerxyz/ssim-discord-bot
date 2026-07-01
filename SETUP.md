@@ -20,8 +20,8 @@ This is the end-to-end setup for the three moving parts (bot ⇄ license server 
 ## 1. Create the Discord application + bot  (Discord dev portal)
 
 1. https://discord.com/developers/applications → **New Application** → name it *SSIM* / *Santer*.
-2. **Bot** tab → **Reset Token** → copy it → `DISCORD_TOKEN`.
-3. **General Information** → copy **Application ID** → `DISCORD_CLIENT_ID`.
+2. **Bot** tab -> **Reset Token** -> copy it into `.env` as `DISCORD_TOKEN` (never paste it in this file).
+3. **General Information** → copy **Application ID** → `1521775978009985034`.
 4. **Bot** tab → **Privileged Gateway Intents** → enable **SERVER MEMBERS INTENT** and **MESSAGE CONTENT INTENT** (both are required — members for role grants, message content for transcripts). Save.
 
 ## 2. Invite the bot
@@ -49,16 +49,16 @@ Create (or pick) and copy IDs (right-click → *Copy ID*, Developer Mode on):
 
 | Env var | What |
 |---|---|
-| `ANNOUNCE_CHANNEL_ID` | where releases are posted |
-| `ONBOARDING_CHANNEL_ID` | the restricted area that holds the ticket panel (visible to members WITHOUT Beta Tester) |
-| `TICKET_CATEGORY_ID` | a **category** channel that new ticket channels are created under |
-| `AUDIT_CHANNEL_ID` | staff-only audit log (reveals/claims/assigns/opens/closes) |
-| `TICKET_LOG_CHANNEL_ID` | staff-only channel that receives ticket transcripts on close |
+| `1514967419507183776` | where releases are posted |
+| `1521841019748876348` | the restricted area that holds the ticket panel (visible to members WITHOUT Beta Tester) |
+| `1521840878522601635` | a **category** channel that new ticket channels are created under |
+| `1521840749602148524` | staff-only audit log (reveals/claims/assigns/opens/closes) |
+| `1521841214079500408` | staff-only channel that receives ticket transcripts on close |
 
 > Gate the server so members **without Beta Tester** can only see `ONBOARDING_CHANNEL_ID` (deny View on your
 > normal channels for `@everyone`, allow for Beta Tester). The panel there is their only entry point.
 
-## 5. Announce webhook ("Santer")
+## 5. Announce webhook ("SSIM")
 
 - In the **announce channel** → Edit Channel → **Integrations → Webhooks → New Webhook**.
 - Name it **`Santer`**, set the Santer avatar (so posts render pixel-identically). Copy URL → `ANNOUNCE_WEBHOOK_URL`.
@@ -71,6 +71,10 @@ Create (or pick) and copy IDs (right-click → *Copy ID*, Developer Mode on):
 3. Deploy the server changes on `feature/discord-bot` (`bot-api.js`, `changelog.js`, `licenses.js` Discord
    fields, `requireBotToken`). Verify: `curl -H "Authorization: Bearer <token>" https://license.ssim.dev/admin/api/bot/audit`
    should return `[]` (not 503/401).
+
+> **Self-service "Generate my key"** is **ON by default** — anyone in the server can mint ONE key.
+> Tune via the server `.env`: `SELF_ISSUE_ENABLED` (true/false), `SELF_ISSUE_TIER` (b2c),
+> `SELF_ISSUE_SEATS` (1), `SELF_ISSUE_DAYS` (0 = permanent). To disable it, set `SELF_ISSUE_ENABLED=false`.
 
 ## 7. Bot `.env`
 

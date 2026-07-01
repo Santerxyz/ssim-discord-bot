@@ -67,6 +67,7 @@ export const licenseApi = {
   byDiscord: (discordId: string) => call<License>('GET', `/admin/api/bot/by-discord/${encodeURIComponent(discordId)}`),
   whois: (discordId: string) => call<Whois>('GET', `/admin/api/bot/whois/${encodeURIComponent(discordId)}`),
   claim: (p: { key: string; discordId: string; discordUsername?: string }) => call<License>('POST', '/admin/api/bot/claim', p),
+  selfIssue: (p: { discordId: string; discordUsername?: string }) => call<License>('POST', '/admin/api/bot/self-issue', p),
   assign: (p: { key: string; discordId: string; discordUsername?: string }) => call<License>('POST', '/admin/api/bot/assign', p),
   unassign: (key: string) => call<License>('POST', '/admin/api/bot/unassign', { key }),
 };

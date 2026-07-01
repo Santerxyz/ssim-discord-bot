@@ -50,6 +50,7 @@ async function dmKey(user: User, license: License): Promise<boolean> {
 export function licenseActionRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId('lic:reveal').setLabel('Reveal my key').setStyle(ButtonStyle.Success).setEmoji('🔑'),
+    new ButtonBuilder().setCustomId('lic:generate').setLabel('Generate my key').setStyle(ButtonStyle.Primary).setEmoji('✨'),
     new ButtonBuilder().setCustomId('lic:claim').setLabel('I already have a key').setStyle(ButtonStyle.Secondary),
   );
 }
@@ -80,13 +81,12 @@ export async function onLicenseTicketOpen(channel: TextChannel, opener: GuildMem
     await audit(channel.client, 'license_reveal', { user: opener.user.tag, key: redactKey(res.data.key), delivery: dm ? 'dm' : 'pending' });
   } else if (res.status === 404) {
     await channel.send({
-      content: `<@&${config.roles.staff}>`,
-      embeds: [new EmbedBuilder().setColor(BRAND).setTitle('No license on file').setDescription(
-        'I couldn’t find a license linked to your Discord account.\n' +
-        '• If you **already have a key**, click **I already have a key** to link it.\n' +
-        '• Otherwise, a staff member will help you shortly.',
+      embeds: [new EmbedBuilder().setColor(BRAND).setTitle('Get your license').setDescription(
+        'You don’t have a license linked yet — grab one below:\n' +
+        '• **✨ Generate my key** — create a fresh license instantly.\n' +
+        '• **I already have a key** — link an existing one.',
       )],
-      allowedMentions: { roles: [config.roles.staff] },
+      allowedMentions: { parse: [] },
     });
     await audit(channel.client, 'license_no_match', { user: opener.user.tag });
   } else {
@@ -109,9 +109,30 @@ export async function handleReveal(interaction: ButtonInteraction): Promise<void
     else await interaction.editReply({ content: 'Here is your key (only you can see this). Access unlocked.', embeds: [keyEmbed(res.data)] });
     await audit(interaction.client, 'license_reveal', { user: interaction.user.tag, key: redactKey(res.data.key), delivery: dm ? 'dm' : 'ephemeral' });
   } else if (res.status === 404) {
-    await interaction.editReply({ content: 'No license is linked to your account yet. If you have a key, use **I already have a key** to link it.' });
+    await interaction.editReply({ content: 'No license is linked to your account yet. Use **✨ Generate my key** to get one, or **I already have a key** to link an existing one.' });
   } else {
     await interaction.editReply({ content: 'Could not reach the license service — please try again shortly.' });
+  }
+}
+
+// ── "Generate my key" — open self-service issuing (one license per account) ─────
+export async function handleGenerate(interaction: ButtonInteraction): Promise<void> {
+  const rl = claimLimiter(interaction.user.id);
+  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Slow down — try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` }); return; }
+  await interaction.deferReply({ ephemeral: true });
+  const res = await licenseApi.selfIssue({ discordId: interaction.user.id, discordUsername: interaction.user.tag });
+  if (res.ok && res.data) {
+    const granted = await grantBetaTester(await memberOf(interaction));
+    const dm = await dmKey(interaction.user, res.data);
+    const created = res.status === 201;
+    const line = created ? '✨ Created your license' : 'You already have a license';
+    if (dm) await interaction.editReply({ content: `${line} and sent it by **DM**.${granted ? ' Access unlocked (**Beta Tester**).' : ''}` });
+    else await interaction.editReply({ content: `${line} — here it is (only you can see this):`, embeds: [keyEmbed(res.data)] });
+    await audit(interaction.client, created ? 'license_selfissue' : 'license_reveal', { user: interaction.user.tag, key: redactKey(res.data.key), delivery: dm ? 'dm' : 'ephemeral' });
+  } else if (res.status === 403) {
+    await interaction.editReply({ content: 'Self-service key generation is currently disabled — a staff member will help.' });
+  } else {
+    await interaction.editReply({ content: 'Could not generate a key right now — please try again shortly.' });
   }
 }
 

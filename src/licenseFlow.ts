@@ -32,12 +32,12 @@ async function memberOf(interaction: { guild: { members: { fetch: (id: string) =
 }
 
 function keyEmbed(license: License): EmbedBuilder {
-  return new EmbedBuilder().setColor(BRAND).setAuthor({ name: 'Santer' }).setTitle('🔑 Your SSIM License')
-    .setDescription(`\`\`\`\n${license.key}\n\`\`\`\nKeep it private — treat it like a password.`)
+  return new EmbedBuilder().setColor(BRAND).setTitle('Your SSIM License')
+    .setDescription(`\`\`\`\n${license.key}\n\`\`\`\nKeep this private — treat it like a password.`)
     .addFields(
       { name: 'Tier', value: String(license.tier), inline: true },
       { name: 'Seats', value: `${license.usedSeats ?? 0} / ${license.seats}`, inline: true },
-      { name: 'Expires', value: license.expiresAt ? String(license.expiresAt).slice(0, 10) : 'never', inline: true },
+      { name: 'Expires', value: license.expiresAt ? String(license.expiresAt).slice(0, 10) : 'Never', inline: true },
     );
 }
 
@@ -49,8 +49,8 @@ async function dmKey(user: User, license: License): Promise<boolean> {
 // ── License action buttons (posted inside a license ticket) ─────────────────────
 export function licenseActionRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('lic:reveal').setLabel('Reveal my key').setStyle(ButtonStyle.Success).setEmoji('🔑'),
-    new ButtonBuilder().setCustomId('lic:generate').setLabel('Generate my key').setStyle(ButtonStyle.Primary).setEmoji('✨'),
+    new ButtonBuilder().setCustomId('lic:reveal').setLabel('Retrieve my key').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('lic:generate').setLabel('Generate a key').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('lic:claim').setLabel('I already have a key').setStyle(ButtonStyle.Secondary),
   );
 }
@@ -59,8 +59,8 @@ export function licenseActionRow(): ActionRowBuilder<ButtonBuilder> {
 export async function onLicenseTicketOpen(channel: TextChannel, opener: GuildMember): Promise<void> {
   await channel.send({
     content: `<@${opener.id}>`,
-    embeds: [new EmbedBuilder().setColor(BRAND).setTitle('🔑 License / Get Access')
-      .setDescription('Checking for a license linked to your account… Use the buttons below at any time.')],
+    embeds: [new EmbedBuilder().setColor(BRAND).setTitle('License / Get Access')
+      .setDescription('Checking for a license linked to your account. You can use the options below at any time.')],
     components: [licenseActionRow()],
     allowedMentions: { users: [opener.id] },
   });
@@ -70,10 +70,10 @@ export async function onLicenseTicketOpen(channel: TextChannel, opener: GuildMem
     const granted = await grantBetaTester(opener);
     const dm = await dmKey(opener.user, res.data);
     await channel.send({
-      embeds: [new EmbedBuilder().setColor(BRAND).setTitle('✅ License found').setDescription(
-        `${dm ? 'Sent your key by **DM**.' : 'I could not DM you — click **Reveal my key** to see it privately.'}\n` +
+      embeds: [new EmbedBuilder().setColor(BRAND).setTitle('License found').setDescription(
+        `${dm ? 'Your key has been sent to you by **direct message**.' : 'We could not send you a direct message — use **Retrieve my key** to view it privately.'}\n` +
         `Reference: \`${redactKey(res.data.key)}\`\n` +
-        (granted ? 'Role **Beta Tester** granted — the server is unlocked. 🎉' : '⚠ Could not grant the role automatically; staff will help.'),
+        (granted ? 'The **Beta Tester** role has been granted and your access is unlocked.' : 'We could not grant the role automatically; a staff member will assist.'),
       )],
       components: [closeRow()],
       allowedMentions: { parse: [] },
@@ -82,16 +82,16 @@ export async function onLicenseTicketOpen(channel: TextChannel, opener: GuildMem
   } else if (res.status === 404) {
     await channel.send({
       embeds: [new EmbedBuilder().setColor(BRAND).setTitle('Get your license').setDescription(
-        'You don’t have a license linked yet — grab one below:\n' +
-        '• **✨ Generate my key** — create a fresh license instantly.\n' +
+        'No license is linked to your account yet. You can:\n' +
+        '• **Generate a key** — create a new license instantly.\n' +
         '• **I already have a key** — link an existing one.',
       )],
       allowedMentions: { parse: [] },
     });
     await audit(channel.client, 'license_no_match', { user: opener.user.tag });
   } else {
-    await channel.send({ embeds: [new EmbedBuilder().setColor(BRAND).setTitle('Temporary problem')
-      .setDescription('Could not reach the license service. Please try **Reveal my key** again shortly, or wait for staff.')] });
+    await channel.send({ embeds: [new EmbedBuilder().setColor(BRAND).setTitle('Service unavailable')
+      .setDescription('We could not reach the license service. Please use **Retrieve my key** again shortly, or wait for a staff member.')] });
     logger.warn('license lookup transient failure', { status: res.status, err: res.error });
   }
 }
@@ -99,40 +99,40 @@ export async function onLicenseTicketOpen(channel: TextChannel, opener: GuildMem
 // ── "Reveal my key" button — scoped to the INVOKER, ephemeral/DM only ───────────
 export async function handleReveal(interaction: ButtonInteraction): Promise<void> {
   const rl = revealLimiter(interaction.user.id);
-  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Slow down — try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` }); return; }
+  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Please wait ${Math.ceil(rl.retryAfterMs / 1000)} seconds before trying again.` }); return; }
   await interaction.deferReply({ ephemeral: true });
   const res = await licenseApi.byDiscord(interaction.user.id); // INVOKER — never the channel opener
   if (res.ok && res.data) {
     await grantBetaTester(await memberOf(interaction));
     const dm = await dmKey(interaction.user, res.data);
-    if (dm) await interaction.editReply({ content: '📬 Sent your key by DM and unlocked your access (Beta Tester).' });
-    else await interaction.editReply({ content: 'Here is your key (only you can see this). Access unlocked.', embeds: [keyEmbed(res.data)] });
+    if (dm) await interaction.editReply({ content: 'Your key has been sent to you by direct message, and your access is unlocked (Beta Tester).' });
+    else await interaction.editReply({ content: 'Here is your key — visible only to you. Your access is unlocked.', embeds: [keyEmbed(res.data)] });
     await audit(interaction.client, 'license_reveal', { user: interaction.user.tag, key: redactKey(res.data.key), delivery: dm ? 'dm' : 'ephemeral' });
   } else if (res.status === 404) {
-    await interaction.editReply({ content: 'No license is linked to your account yet. Use **✨ Generate my key** to get one, or **I already have a key** to link an existing one.' });
+    await interaction.editReply({ content: 'No license is linked to your account yet. Use **Generate a key** to create one, or **I already have a key** to link an existing one.' });
   } else {
-    await interaction.editReply({ content: 'Could not reach the license service — please try again shortly.' });
+    await interaction.editReply({ content: 'We could not reach the license service. Please try again shortly.' });
   }
 }
 
 // ── "Generate my key" — open self-service issuing (one license per account) ─────
 export async function handleGenerate(interaction: ButtonInteraction): Promise<void> {
   const rl = claimLimiter(interaction.user.id);
-  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Slow down — try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` }); return; }
+  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Please wait ${Math.ceil(rl.retryAfterMs / 1000)} seconds before trying again.` }); return; }
   await interaction.deferReply({ ephemeral: true });
   const res = await licenseApi.selfIssue({ discordId: interaction.user.id, discordUsername: interaction.user.tag });
   if (res.ok && res.data) {
     const granted = await grantBetaTester(await memberOf(interaction));
     const dm = await dmKey(interaction.user, res.data);
     const created = res.status === 201;
-    const line = created ? '✨ Created your license' : 'You already have a license';
-    if (dm) await interaction.editReply({ content: `${line} and sent it by **DM**.${granted ? ' Access unlocked (**Beta Tester**).' : ''}` });
-    else await interaction.editReply({ content: `${line} — here it is (only you can see this):`, embeds: [keyEmbed(res.data)] });
+    const line = created ? 'Your license has been created' : 'You already have a license';
+    if (dm) await interaction.editReply({ content: `${line} and sent to you by **direct message**.${granted ? ' Your access is unlocked (**Beta Tester**).' : ''}` });
+    else await interaction.editReply({ content: `${line}. Here it is — visible only to you:`, embeds: [keyEmbed(res.data)] });
     await audit(interaction.client, created ? 'license_selfissue' : 'license_reveal', { user: interaction.user.tag, key: redactKey(res.data.key), delivery: dm ? 'dm' : 'ephemeral' });
   } else if (res.status === 403) {
-    await interaction.editReply({ content: 'Self-service key generation is currently disabled — a staff member will help.' });
+    await interaction.editReply({ content: 'Self-service key generation is currently unavailable. A staff member will assist you.' });
   } else {
-    await interaction.editReply({ content: 'Could not generate a key right now — please try again shortly.' });
+    await interaction.editReply({ content: 'We could not generate a key at the moment. Please try again shortly.' });
   }
 }
 
@@ -148,13 +148,13 @@ export function buildClaimModal(): ModalBuilder {
 
 export async function handleClaimModal(interaction: ModalSubmitInteraction): Promise<void> {
   const rl = claimLimiter(interaction.user.id);
-  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Too many attempts — try again in ${Math.ceil(rl.retryAfterMs / 1000)}s.` }); return; }
+  if (!rl.ok) { await interaction.reply({ ephemeral: true, content: `Too many attempts. Please wait ${Math.ceil(rl.retryAfterMs / 1000)} seconds and try again.` }); return; }
   const key = interaction.fields.getTextInputValue('key').trim().toUpperCase();
   await interaction.deferReply({ ephemeral: true });
   const res = await licenseApi.claim({ key, discordId: interaction.user.id, discordUsername: interaction.user.tag });
   if (res.ok && res.data) {
     const granted = await grantBetaTester(await memberOf(interaction));
-    await interaction.editReply({ content: `✅ Linked \`${redactKey(res.data.key)}\` to your account${granted ? ' and unlocked access (**Beta Tester**).' : '. ⚠ Could not grant the role — staff will help.'}` });
+    await interaction.editReply({ content: `Linked \`${redactKey(res.data.key)}\` to your account${granted ? ' and unlocked your access (**Beta Tester**).' : '. We could not grant the role automatically; a staff member will assist.'}` });
     await audit(interaction.client, 'license_claim', { user: interaction.user.tag, key: redactKey(res.data.key) });
   } else {
     // Generic messages — never reveal whether a key exists for another account.
@@ -163,7 +163,7 @@ export async function handleClaimModal(interaction: ModalSubmitInteraction): Pro
       : res.status === 404 || res.error === 'not_found' ? 'That key was not found. Double-check it and try again.'
       : res.status === 403 || res.error === 'revoked' || res.error === 'expired' ? 'That key is not active (revoked or expired).'
       : 'Could not link that key. Please try again or contact staff.';
-    await interaction.editReply({ content: `❌ ${msg}` });
+    await interaction.editReply({ content: msg });
     await audit(interaction.client, 'license_claim_fail', { user: interaction.user.tag, reason: res.error || String(res.status) });
   }
 }

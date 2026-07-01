@@ -12,7 +12,7 @@ import { store } from './store';
 import { memberHasStaff } from './perms';
 import { handleCommand } from './commands';
 import {
-  categoryById, createTicket, claimTicket, closeTicket, buildBugModal, bugEmbed,
+  categoryById, createTicket, claimTicket, closeTicket, buildBugModal, bugEmbed, buildCreatePrompt,
 } from './tickets';
 import {
   onLicenseTicketOpen, handleReveal, handleGenerate, handleClaimModal, buildClaimModal,
@@ -21,7 +21,7 @@ import {
 export async function handleInteraction(interaction: Interaction): Promise<void> {
   try {
     if (interaction.isChatInputCommand()) return void (await handleCommand(interaction));
-    if (interaction.isStringSelectMenu() && interaction.customId === 'ticket:open') return void (await onOpenSelect(interaction));
+    if (interaction.isStringSelectMenu() && interaction.customId === 'ticket:select') return void (await onTopicSelect(interaction));
     if (interaction.isButton()) return void (await onButton(interaction));
     if (interaction.isModalSubmit()) return void (await onModal(interaction));
   } catch (err) {
@@ -33,28 +33,33 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
   }
 }
 
-// ── Panel select → open a ticket ────────────────────────────────────────────────
-async function onOpenSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+// ── Panel step 1 — pick a topic → ephemeral "Create Ticket" confirmation ────────
+async function onTopicSelect(interaction: StringSelectMenuInteraction): Promise<void> {
   const category = categoryById(interaction.values[0]);
-  if (!category || !interaction.guild) { await interaction.reply({ ephemeral: true, content: 'Unknown category.' }); return; }
+  if (!category) { await interaction.reply({ ephemeral: true, content: 'Unknown topic.' }); return; }
+  await interaction.reply({ ephemeral: true, ...buildCreatePrompt(category) });
+}
 
-  // Bug Report shows a modal FIRST (you cannot defer before showModal) → the channel is created on submit.
-  if (category.kind === 'bug') { await interaction.showModal(buildBugModal()); return; }
-
+// ── Panel step 2 — the user clicks "Create Ticket" → open the private channel ────
+async function onCreateTicket(interaction: ButtonInteraction, categoryId: string): Promise<void> {
+  const category = categoryById(categoryId);
+  if (!category || !interaction.guild) { await interaction.update({ content: 'Unknown topic.', embeds: [], components: [] }); return; }
   const reused = !!store.openTicketFor(interaction.user.id, category.id);
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.update({ content: 'Creating your ticket…', embeds: [], components: [] });
   const opener = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!opener) { await interaction.editReply({ content: 'Could not resolve your membership.' }); return; }
-
   const channel = await createTicket(interaction.guild, opener.user, category);
-  if (!channel) { await interaction.editReply({ content: 'Could not create your ticket — staff have been notified.' }); return; }
+  if (!channel) { await interaction.editReply({ content: 'We could not create your ticket. Staff have been notified.' }); return; }
   if (category.kind === 'license') await onLicenseTicketOpen(channel, opener);
-  await interaction.editReply({ content: `${reused ? 'You already had an open ticket: ' : 'Ticket created: '}<#${channel.id}>` });
+  await interaction.editReply({ content: `${reused ? 'You already have an open ticket: ' : 'Your ticket is ready: '}<#${channel.id}>` });
 }
 
 // ── Buttons ─────────────────────────────────────────────────────────────────────
 async function onButton(interaction: ButtonInteraction): Promise<void> {
-  switch (interaction.customId) {
+  const id = interaction.customId;
+  if (id.startsWith('ticket:create:')) return onCreateTicket(interaction, id.slice('ticket:create:'.length));
+  switch (id) {
+    case 'ticket:cancel': return void (await interaction.update({ content: 'Cancelled.', embeds: [], components: [] }));
     case 'lic:reveal': return handleReveal(interaction);
     case 'lic:generate': return handleGenerate(interaction);
     case 'lic:claim': return void (await interaction.showModal(buildClaimModal()));

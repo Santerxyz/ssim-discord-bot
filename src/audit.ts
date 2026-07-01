@@ -13,7 +13,7 @@ export async function audit(client: Client, event: string, fields: Record<string
   try {
     const ch = await client.channels.fetch(config.channels.audit).catch(() => null);
     if (!ch || !ch.isTextBased()) return;
-    const embed = new EmbedBuilder().setColor(BRAND).setTitle(`🛡️ ${event}`).setTimestamp();
+    const embed = new EmbedBuilder().setColor(BRAND).setTitle(event).setTimestamp();
     for (const [k, v] of Object.entries(fields)) embed.addFields({ name: k, value: (v || '—').slice(0, 1024), inline: true });
     await (ch as TextChannel).send({ embeds: [embed], allowedMentions: { parse: [] } });
   } catch (err) {

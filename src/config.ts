@@ -22,37 +22,24 @@ export type TicketKind = 'license' | 'support' | 'bug' | 'billing' | 'other';
 export interface TicketCategory {
   id: string;          // stable key used inside customId — DO NOT rename after launch
   label: string;       // select-menu label
-  emoji: string;       // select-menu emoji + channel-name prefix
   description: string;  // select-menu description
   intro: string;       // first bot message inside the ticket
   staffPing: boolean;  // ping STAFF_ROLE_ID on open
   kind: TicketKind;
 }
 
-// Versatile by design: add / remove / rename here (keep `id` stable) — no code change needed.
+// Two topics only. Add / remove / rename here (keep `id` stable) — no code change needed.
 export const TICKET_CATEGORIES: TicketCategory[] = [
   {
-    id: 'license', label: 'License / Get Access', emoji: '🔑', kind: 'license',
-    description: 'Get your license key + unlock the server',
-    intro: 'Welcome! Use the buttons below to retrieve your license and unlock access.',
+    id: 'license', label: 'License / Get Access', kind: 'license',
+    description: 'Retrieve, generate, or activate your license',
+    intro: 'Welcome. Use the options below to retrieve or generate your license and unlock access to the server.',
     staffPing: false,
   },
   {
-    id: 'support', label: 'Support / Help', emoji: '🛠️', kind: 'support',
-    description: 'General questions & help',
-    intro: 'How can we help? Describe your issue and a staff member will jump in.',
-    staffPing: true,
-  },
-  {
-    id: 'bug', label: 'Bug Report', emoji: '🐛', kind: 'bug',
-    description: 'Report something broken',
-    intro: 'Thanks for the report — your details are below. Staff will follow up here.',
-    staffPing: true,
-  },
-  {
-    id: 'billing', label: 'Purchase / Billing', emoji: '💳', kind: 'billing',
-    description: 'Buy a license or billing questions',
-    intro: 'Tell us what you need (new license, renewal, invoice…) and staff will assist.',
+    id: 'support', label: 'Support', kind: 'support',
+    description: 'Questions, technical issues, or assistance',
+    intro: 'Please describe your request in as much detail as possible, and a member of our team will assist you shortly.',
     staffPing: true,
   },
 ];

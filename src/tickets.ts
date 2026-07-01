@@ -25,18 +25,30 @@ const cleanName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').rep
 export function buildPanel(): { embeds: EmbedBuilder[]; components: ActionRowBuilder<StringSelectMenuBuilder>[] } {
   const embed = new EmbedBuilder()
     .setColor(BRAND)
-    .setAuthor({ name: 'Santer' })
     .setTitle('Support & Access')
     .setDescription(
-      'Pick a topic below to open a **private** ticket with the team.\n\n' +
-      TICKET_CATEGORIES.map((c) => `${c.emoji} **${c.label}** — ${c.description}`).join('\n'),
+      'Open a private ticket with our team. Select a topic below to begin.\n\n' +
+      TICKET_CATEGORIES.map((c) => `**${c.label}**\n${c.description}`).join('\n\n'),
     )
-    .setFooter({ text: 'SSIM • Santer' });
+    .setFooter({ text: 'SSIM' });
   const menu = new StringSelectMenuBuilder()
-    .setCustomId('ticket:open')
-    .setPlaceholder('Choose a topic…')
-    .addOptions(TICKET_CATEGORIES.map((c) => ({ label: c.label, value: c.id, description: c.description, emoji: c.emoji })));
+    .setCustomId('ticket:select')
+    .setPlaceholder('Select a topic to continue…')
+    .addOptions(TICKET_CATEGORIES.map((c) => ({ label: c.label, value: c.id, description: c.description })));
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
+  return { embeds: [embed], components: [row] };
+}
+
+// Step 2 of the flow: after a topic is picked, the user confirms with an explicit "Create Ticket".
+export function buildCreatePrompt(category: TicketCategory): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
+  const embed = new EmbedBuilder()
+    .setColor(BRAND)
+    .setTitle('Open a ticket')
+    .setDescription(`**Topic** — ${category.label}\n\nClick **Create Ticket** to open a private channel with our team.`);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`ticket:create:${category.id}`).setLabel('Create Ticket').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('ticket:cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary),
+  );
   return { embeds: [embed], components: [row] };
 }
 
@@ -49,7 +61,7 @@ export async function postPanel(client: Client): Promise<TextChannel> {
 
 function closeRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('ticket:close').setLabel('Close ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+    new ButtonBuilder().setCustomId('ticket:close').setLabel('Close ticket').setStyle(ButtonStyle.Danger),
   );
 }
 
@@ -96,14 +108,14 @@ export async function createTicket(
   store.addTicket(t);
 
   const header = new EmbedBuilder()
-    .setColor(BRAND).setAuthor({ name: 'Santer' })
-    .setTitle(`${category.emoji} ${category.label} — Ticket #${pad4(number)}`)
+    .setColor(BRAND)
+    .setTitle(`${category.label} · Ticket #${pad4(number)}`)
     .setDescription(category.intro)
-    .addFields({ name: 'Opened by', value: `<@${opener.id}>`, inline: true }, { name: 'Status', value: '🟢 Open', inline: true })
+    .addFields({ name: 'Opened by', value: `<@${opener.id}>`, inline: true }, { name: 'Status', value: 'Open', inline: true })
     .setTimestamp();
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('ticket:claim').setLabel('Claim').setStyle(ButtonStyle.Secondary).setEmoji('🙋'),
-    new ButtonBuilder().setCustomId('ticket:close').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+    new ButtonBuilder().setCustomId('ticket:claim').setLabel('Claim').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('ticket:close').setLabel('Close').setStyle(ButtonStyle.Danger),
   );
   const ping = category.staffPing ? `<@&${config.roles.staff}> ` : '';
   await channel.send({
@@ -122,7 +134,7 @@ export async function claimTicket(channel: TextChannel, staff: GuildMember): Pro
   const t = store.getTicket(channel.id);
   if (!t) return;
   store.updateTicket(channel.id, { claimedBy: staff.id });
-  await channel.send({ content: `🙋 Claimed by <@${staff.id}>.`, allowedMentions: { parse: [] } });
+  await channel.send({ content: `Ticket claimed by <@${staff.id}>.`, allowedMentions: { parse: [] } });
   await audit(channel.client, 'ticket_claim', { ticket: `#${pad4(t.number)}`, staff: staff.user.tag });
 }
 
@@ -130,7 +142,7 @@ export async function claimTicket(channel: TextChannel, staff: GuildMember): Pro
 export async function closeTicket(channel: TextChannel, closedBy: User, reason?: string): Promise<void> {
   const t = store.getTicket(channel.id);
   const number = t ? pad4(t.number) : '????';
-  await channel.send({ content: `🔒 Closing ticket #${number}${reason ? ` — ${reason}` : ''}… generating transcript.`, allowedMentions: { parse: [] } }).catch(() => {});
+  await channel.send({ content: `Closing ticket #${number}${reason ? ` — ${reason}` : ''}. Generating transcript…`, allowedMentions: { parse: [] } }).catch(() => {});
 
   const transcript = await buildTranscript(channel, t);
 
@@ -252,7 +264,7 @@ export async function sweepAutoClose(client: Client): Promise<void> {
     if (!ch || !ch.isTextBased()) { store.removeTicket(t.channelId); continue; }
     if (!t.warnedAt) {
       store.updateTicket(t.channelId, { warnedAt: new Date().toISOString() });
-      await (ch as TextChannel).send({ content: `⏳ Inactive for ${hours}h — this ticket auto-closes in ${graceMs / 3_600_000}h unless there's a reply.`, allowedMentions: { parse: [] } }).catch(() => {});
+      await (ch as TextChannel).send({ content: `This ticket has been inactive for ${hours}h and will close automatically in ${graceMs / 3_600_000}h unless there is a reply.`, allowedMentions: { parse: [] } }).catch(() => {});
     } else if (now - new Date(t.warnedAt).getTime() > graceMs) {
       await closeTicket(ch as TextChannel, client.user!, 'inactivity');
     }

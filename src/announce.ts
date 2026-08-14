@@ -15,7 +15,7 @@ import { store } from './store';
 import { logger } from './logger';
 import { isNewer, BRAND } from './util';
 import { formatReleasePost } from './format';
-import { licenseApi, VersionManifest } from './licenseApi';
+import { getLatestRelease, VersionManifest } from './releaseApi';
 
 let discordClient: Client | null = null;
 export function bindAnnounceClient(c: Client): void { discordClient = c; }
@@ -74,9 +74,9 @@ async function upsertDownloads(manifest: VersionManifest): Promise<void> {
 /** Idempotent, forward-only. Re-fetches /version and posts iff it's newer than the last announced. */
 export function maybeAnnounce(reason: string): Promise<void> {
   chain = chain.then(async () => {
-    const res = await licenseApi.getVersion();
+    const res = await getLatestRelease();
     if (!res.ok || !res.data || !res.data.latest) {
-      logger.warn(`announce(${reason}): could not fetch /version`, { status: res.status });
+      logger.warn(`announce(${reason}): could not fetch the latest GitHub release`, { status: res.status });
       return;
     }
     const latest = res.data.latest;
@@ -96,8 +96,8 @@ export function maybeAnnounce(reason: string): Promise<void> {
 
 /** Force-post the CURRENT /version regardless of idempotency (staff /announce). */
 export async function announceNow(): Promise<{ ok: boolean; version?: string; error?: string }> {
-  const res = await licenseApi.getVersion();
-  if (!res.ok || !res.data || !res.data.latest) return { ok: false, error: 'could not fetch /version' };
+  const res = await getLatestRelease();
+  if (!res.ok || !res.data || !res.data.latest) return { ok: false, error: 'could not fetch the latest GitHub release' };
   try {
     await postUpdate(res.data);
     await upsertDownloads(res.data);
@@ -114,7 +114,7 @@ export async function announceNow(): Promise<{ ok: boolean; version?: string; er
  * restart we reconcile once (in case a release landed while we were down), then poll forever.
  */
 export async function initAnnounce(): Promise<void> {
-  const res = await licenseApi.getVersion();
+  const res = await getLatestRelease();
   if (res.ok && res.data && res.data.latest) {
     if (store.lastAnnouncedVersion === '0.0.0') {
       store.setLastAnnouncedVersion(res.data.latest);

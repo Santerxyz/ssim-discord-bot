@@ -64,8 +64,15 @@ export const config = {
   // Full-install ZIP: a single FIXED download link shown in the downloads channel. Stays the same across
   // releases; the bot uses it automatically. Set once in .env.
   downloadZipUrl: opt('DOWNLOAD_ZIP_URL'),
-  licenseApiUrl: req('LICENSE_API_URL').replace(/\/+$/, ''),
-  botApiToken: req('BOT_API_TOKEN'),
+  // Source of truth for release announcements: "owner/repo" on GitHub. Replaces the old
+  // licence-server /version poll (see releaseApi.ts).
+  githubRepo: opt('GITHUB_REPO', 'Santerxyz/SSIM').replace(/^\/+|\/+$/g, ''),
+  // OPTIONAL as of the Apache-2.0 pivot. These serve the licence-retrieval flow only, which is
+  // being retired with the licence server. They were `req()` — meaning the bot refused to boot
+  // without them, so shutting the server down and dropping the vars would have taken the bot
+  // (and its announcements and tickets) down with it.
+  licenseApiUrl: opt('LICENSE_API_URL').replace(/\/+$/, ''),
+  botApiToken: opt('BOT_API_TOKEN'),
   announceHmacSecret: opt('ANNOUNCE_HMAC_SECRET'),
   httpPort: Number(opt('HTTP_PORT', '8787')),
   httpHost: opt('HTTP_HOST', '0.0.0.0'),

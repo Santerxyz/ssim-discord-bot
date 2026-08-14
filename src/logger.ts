@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  logger.ts — tiny structured logger. Never logs a full license key (callers
+//  logger.ts — tiny structured logger. Never logs secrets or tokens (callers
 //  must pass redacted refs). Timestamped, JSON-tail for structured fields.
 // ════════════════════════════════════════════════════════════════════════════
 type Level = 'debug' | 'info' | 'warn' | 'error';

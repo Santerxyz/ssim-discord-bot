@@ -8,10 +8,7 @@ import {
 } from 'discord.js';
 import { config } from './config';
 import { logger } from './logger';
-import { redactKey } from './util';
 import { memberHasStaff } from './perms';
-import { licenseApi } from './licenseApi';
-import { audit } from './audit';
 import { announceNow } from './announce';
 import { store } from './store';
 import { closeTicket, addUser, removeUser, postPanel } from './tickets';
@@ -22,16 +19,6 @@ import { handlePostCommand } from './post';
 const staffPerm = PermissionFlagsBits.ManageMessages;
 
 export const commands = [
-  new SlashCommandBuilder().setName('assign').setDescription('Staff: link a license key to a Discord user')
-    .addUserOption((o) => o.setName('user').setDescription('The Discord user').setRequired(true))
-    .addStringOption((o) => o.setName('key').setDescription('SSIM-XXXX-XXXX-XXXX-XXXX').setRequired(true))
-    .setDefaultMemberPermissions(staffPerm),
-  new SlashCommandBuilder().setName('unassign').setDescription("Staff: unlink a user's license")
-    .addUserOption((o) => o.setName('user').setDescription('The Discord user').setRequired(true))
-    .setDefaultMemberPermissions(staffPerm),
-  new SlashCommandBuilder().setName('whois').setDescription('Staff: show the license linked to a user')
-    .addUserOption((o) => o.setName('user').setDescription('The Discord user').setRequired(true))
-    .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('close').setDescription('Staff: close this ticket')
     .addStringOption((o) => o.setName('reason').setDescription('Reason (optional)').setRequired(false))
     .setDefaultMemberPermissions(staffPerm),
@@ -63,9 +50,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     return;
   }
   switch (interaction.commandName) {
-    case 'assign': return cmdAssign(interaction);
-    case 'unassign': return cmdUnassign(interaction);
-    case 'whois': return cmdWhois(interaction);
     case 'close': return cmdClose(interaction);
     case 'add': return cmdAddRemove(interaction, true);
     case 'remove': return cmdAddRemove(interaction, false);
@@ -73,53 +57,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     case 'panel': return cmdPanel(interaction);
     case 'post': return handlePostCommand(interaction);
     default: await interaction.reply({ ephemeral: true, content: 'Unknown command.' });
-  }
-}
-
-async function cmdAssign(interaction: ChatInputCommandInteraction): Promise<void> {
-  const user = interaction.options.getUser('user', true);
-  const key = interaction.options.getString('key', true).trim().toUpperCase();
-  await interaction.deferReply({ ephemeral: true });
-  const res = await licenseApi.assign({ key, discordId: user.id, discordUsername: user.tag });
-  if (res.ok && res.data) {
-    await interaction.editReply({ content: `✅ Linked \`${redactKey(res.data.key)}\` to <@${user.id}>. They can open a **License** ticket to receive it.` });
-    await audit(interaction.client, 'assign', { staff: interaction.user.tag, target: user.tag, key: redactKey(res.data.key) });
-  } else if (res.status === 409) {
-    const conflictKey = (res.data as { conflictKey?: string } | null)?.conflictKey;
-    await interaction.editReply({ content: `⚠ <@${user.id}> already has a license linked${conflictKey ? ` (\`${redactKey(conflictKey)}\`)` : ''}. Run /unassign first.` });
-  } else if (res.status === 404) {
-    await interaction.editReply({ content: '❌ Key not found.' });
-  } else {
-    await interaction.editReply({ content: `❌ Assign failed: ${res.error || res.status}` });
-  }
-}
-
-async function cmdUnassign(interaction: ChatInputCommandInteraction): Promise<void> {
-  const user = interaction.options.getUser('user', true);
-  await interaction.deferReply({ ephemeral: true });
-  const found = await licenseApi.byDiscord(user.id);
-  if (!found.ok || !found.data) { await interaction.editReply({ content: `<@${user.id}> has no license linked.` }); return; }
-  const key = found.data.key;
-  const res = await licenseApi.unassign(key);
-  if (res.ok) {
-    await interaction.editReply({ content: `✅ Unlinked \`${redactKey(key)}\` from <@${user.id}>.` });
-    await audit(interaction.client, 'unassign', { staff: interaction.user.tag, target: user.tag, key: redactKey(key) });
-  } else {
-    await interaction.editReply({ content: `❌ Unassign failed: ${res.error || res.status}` });
-  }
-}
-
-async function cmdWhois(interaction: ChatInputCommandInteraction): Promise<void> {
-  const user = interaction.options.getUser('user', true);
-  await interaction.deferReply({ ephemeral: true });
-  const res = await licenseApi.whois(user.id);
-  if (res.ok && res.data) {
-    const d = res.data;
-    await interaction.editReply({ content: `<@${user.id}> → \`${d.keyRedacted}\` · ${d.tier} · ${d.status} · seats ${d.usedSeats}/${d.seats} · expires ${d.expiresAt ? String(d.expiresAt).slice(0, 10) : 'never'}` });
-  } else if (res.status === 404) {
-    await interaction.editReply({ content: `<@${user.id}> has no license linked.` });
-  } else {
-    await interaction.editReply({ content: `❌ Lookup failed: ${res.error || res.status}` });
   }
 }
 

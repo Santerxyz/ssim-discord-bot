@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  store.ts — tiny JSON persistence (mirrors ssim-license-server's atomic store).
+//  store.ts — tiny JSON persistence with atomic writes.
 //  State lives in memory; every mutation is synchronous then persisted atomically
 //  (temp file + rename), so concurrent interactions can't corrupt or race it.
 // ════════════════════════════════════════════════════════════════════════════

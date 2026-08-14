@@ -17,7 +17,7 @@ function opt(name: string, def = ''): string {
   return v === undefined || v === '' ? def : v.trim();
 }
 
-export type TicketKind = 'license' | 'support' | 'bug' | 'billing' | 'other';
+export type TicketKind = 'support' | 'bug' | 'billing' | 'other';
 
 export interface TicketCategory {
   id: string;          // stable key used inside customId — DO NOT rename after launch
@@ -28,14 +28,10 @@ export interface TicketCategory {
   kind: TicketKind;
 }
 
-// Two topics only. Add / remove / rename here (keep `id` stable) — no code change needed.
+// Add / remove / rename here (keep `id` stable) — no code change needed.
+// The 'license' category was removed with the licence system: SSIM is free software,
+// there is nothing to retrieve, generate or activate.
 export const TICKET_CATEGORIES: TicketCategory[] = [
-  {
-    id: 'license', label: 'License / Get Access', kind: 'license',
-    description: 'Retrieve, generate, or activate your license',
-    intro: 'Welcome. Use the options below to retrieve or generate your license and unlock access to the server.',
-    staffPing: false,
-  },
   {
     id: 'support', label: 'Support', kind: 'support',
     description: 'Questions, technical issues, or assistance',
@@ -67,12 +63,6 @@ export const config = {
   // Source of truth for release announcements: "owner/repo" on GitHub. Replaces the old
   // licence-server /version poll (see releaseApi.ts).
   githubRepo: opt('GITHUB_REPO', 'Santerxyz/SSIM').replace(/^\/+|\/+$/g, ''),
-  // OPTIONAL as of the Apache-2.0 pivot. These serve the licence-retrieval flow only, which is
-  // being retired with the licence server. They were `req()` — meaning the bot refused to boot
-  // without them, so shutting the server down and dropping the vars would have taken the bot
-  // (and its announcements and tickets) down with it.
-  licenseApiUrl: opt('LICENSE_API_URL').replace(/\/+$/, ''),
-  botApiToken: opt('BOT_API_TOKEN'),
   announceHmacSecret: opt('ANNOUNCE_HMAC_SECRET'),
   httpPort: Number(opt('HTTP_PORT', '8787')),
   httpHost: opt('HTTP_HOST', '0.0.0.0'),

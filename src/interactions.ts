@@ -12,11 +12,8 @@ import { store } from './store';
 import { memberHasStaff } from './perms';
 import { handleCommand } from './commands';
 import {
-  categoryById, createTicket, claimTicket, closeTicket, buildBugModal, bugEmbed, buildCreatePrompt,
+  categoryById, createTicket, claimTicket, closeTicket, bugEmbed, buildCreatePrompt,
 } from './tickets';
-import {
-  onLicenseTicketOpen, handleReveal, handleGenerate, handleClaimModal, buildClaimModal,
-} from './licenseFlow';
 import { handlePostModal } from './post';
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
@@ -51,7 +48,6 @@ async function onCreateTicket(interaction: ButtonInteraction, categoryId: string
   if (!opener) { await interaction.editReply({ content: 'Could not resolve your membership.' }); return; }
   const channel = await createTicket(interaction.guild, opener.user, category);
   if (!channel) { await interaction.editReply({ content: 'We could not create your ticket. Staff have been notified.' }); return; }
-  if (category.kind === 'license') await onLicenseTicketOpen(channel, opener);
   await interaction.editReply({ content: `${reused ? 'You already have an open ticket: ' : 'Your ticket is ready: '}<#${channel.id}>` });
 }
 
@@ -61,9 +57,6 @@ async function onButton(interaction: ButtonInteraction): Promise<void> {
   if (id.startsWith('ticket:create:')) return onCreateTicket(interaction, id.slice('ticket:create:'.length));
   switch (id) {
     case 'ticket:cancel': return void (await interaction.update({ content: 'Cancelled.', embeds: [], components: [] }));
-    case 'lic:reveal': return handleReveal(interaction);
-    case 'lic:generate': return handleGenerate(interaction);
-    case 'lic:claim': return void (await interaction.showModal(buildClaimModal()));
     case 'ticket:claim': return onClaimButton(interaction);
     case 'ticket:close': return onCloseButton(interaction);
   }
@@ -92,7 +85,6 @@ async function onCloseButton(interaction: ButtonInteraction): Promise<void> {
 // ── Modals ────────────────────────────────────────────────────────────────────
 async function onModal(interaction: ModalSubmitInteraction): Promise<void> {
   if (interaction.customId.startsWith('post:submit:')) return handlePostModal(interaction);
-  if (interaction.customId === 'lic:claimModal') return handleClaimModal(interaction);
   if (interaction.customId === 'bug:modal') return onBugModal(interaction);
 }
 

@@ -292,6 +292,30 @@ sudo systemctl enable --now ssim-discord-bot
 git pull && npm install && npm run build
 ```
 
+#### Pointing an existing deployment at this repository
+
+A deployment that predates this repository has no git remote, so `git pull` has
+nothing to pull from. Attach one once:
+
+```bash
+cd /opt/ssim-discord-bot
+git remote add origin https://github.com/Santerxyz/ssim-discord-bot.git
+git fetch origin
+git reset --hard origin/main
+```
+
+`git reset --hard` discards local edits to tracked files. It does not touch
+`.env` or `data/`, which are ignored, but check `git status` first if the
+server was ever edited in place.
+
+While the repository is private, git will ask for credentials. Use a personal
+access token with read-only `Contents` scope rather than a password, or add a
+read-only deploy key to the repository and clone over SSH.
+
+An `.env` from an earlier version needs no changes. `LICENSE_API_URL`,
+`BOT_API_TOKEN` and `BETA_TESTER_ROLE_ID` are no longer read and are ignored if
+present, and `GITHUB_REPO` defaults to the right value when absent.
+
 Then restart the service. Slash commands re-register automatically on every
 start, so a changed command definition needs no extra step. `npm run register`
 registers them and exits, which is occasionally useful on its own.

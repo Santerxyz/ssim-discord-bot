@@ -1,6 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  interactions.ts: the single InteractionCreate router. Dispatches slash
-//  commands, the panel select, ticket buttons, and modal submits. Wraps
+//  commands, the panel control (button or select, depending on how many ticket
+//  topics are configured), the in-ticket buttons, and modal submits. Wraps
 //  everything so a handler throw becomes a friendly ephemeral reply rather than
 //  a silent dead interaction.
 // ════════════════════════════════════════════════════════════════════════════
@@ -11,15 +12,13 @@ import { logger } from './logger';
 import { store } from './store';
 import { memberHasStaff } from './perms';
 import { handleCommand } from './commands';
-import {
-  categoryById, createTicket, claimTicket, closeTicket, bugEmbed, buildCreatePrompt,
-} from './tickets';
+import { categoryById, createTicket, claimTicket, closeTicket } from './tickets';
 import { handlePostModal } from './post';
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
   try {
     if (interaction.isChatInputCommand()) return void (await handleCommand(interaction));
-    if (interaction.isStringSelectMenu() && interaction.customId === 'ticket:select') return void (await onTopicSelect(interaction));
+    if (interaction.isStringSelectMenu() && interaction.customId === 'ticket:select') return void (await openTicket(interaction, interaction.values[0]));
     if (interaction.isButton()) return void (await onButton(interaction));
     if (interaction.isModalSubmit()) return void (await onModal(interaction));
   } catch (err) {
@@ -31,19 +30,18 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
   }
 }
 
-// ── Panel step 1: pick a topic, get an ephemeral "Create Ticket" confirmation ───
-async function onTopicSelect(interaction: StringSelectMenuInteraction): Promise<void> {
-  const category = categoryById(interaction.values[0]);
-  if (!category) { await interaction.reply({ ephemeral: true, content: 'Unknown topic.' }); return; }
-  await interaction.reply({ ephemeral: true, ...buildCreatePrompt(category) });
-}
-
-// ── Panel step 2: the user clicks "Create Ticket", we open the private channel ──
-async function onCreateTicket(interaction: ButtonInteraction, categoryId: string): Promise<void> {
+// ── Opening a ticket ────────────────────────────────────────────────────────────
+// Both panel shapes land here: the "Open a ticket" button when there is a single
+// topic, and the topic select menu when there is more than one. The reply is always
+// a fresh ephemeral rather than an update(), because these components live on the
+// public panel message and updating would overwrite the panel itself.
+async function openTicket(
+  interaction: ButtonInteraction | StringSelectMenuInteraction, categoryId: string,
+): Promise<void> {
   const category = categoryById(categoryId);
-  if (!category || !interaction.guild) { await interaction.update({ content: 'Unknown topic.', embeds: [], components: [] }); return; }
+  if (!category || !interaction.guild) { await interaction.reply({ ephemeral: true, content: 'Unknown topic.' }); return; }
+  await interaction.deferReply({ ephemeral: true });
   const reused = !!store.openTicketFor(interaction.user.id, category.id);
-  await interaction.update({ content: 'Creating your ticket…', embeds: [], components: [] });
   const opener = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
   if (!opener) { await interaction.editReply({ content: 'Could not resolve your membership.' }); return; }
   const channel = await createTicket(interaction.guild, opener.user, category);
@@ -54,9 +52,8 @@ async function onCreateTicket(interaction: ButtonInteraction, categoryId: string
 // ── Buttons ─────────────────────────────────────────────────────────────────────
 async function onButton(interaction: ButtonInteraction): Promise<void> {
   const id = interaction.customId;
-  if (id.startsWith('ticket:create:')) return onCreateTicket(interaction, id.slice('ticket:create:'.length));
+  if (id.startsWith('ticket:open:')) return openTicket(interaction, id.slice('ticket:open:'.length));
   switch (id) {
-    case 'ticket:cancel': return void (await interaction.update({ content: 'Cancelled.', embeds: [], components: [] }));
     case 'ticket:claim': return onClaimButton(interaction);
     case 'ticket:close': return onCloseButton(interaction);
   }
@@ -85,17 +82,4 @@ async function onCloseButton(interaction: ButtonInteraction): Promise<void> {
 // ── Modals ────────────────────────────────────────────────────────────────────
 async function onModal(interaction: ModalSubmitInteraction): Promise<void> {
   if (interaction.customId.startsWith('post:submit:')) return handlePostModal(interaction);
-  if (interaction.customId === 'bug:modal') return onBugModal(interaction);
-}
-
-async function onBugModal(interaction: ModalSubmitInteraction): Promise<void> {
-  const category = categoryById('bug');
-  if (!category || !interaction.guild) { await interaction.reply({ ephemeral: true, content: 'Could not open a bug ticket.' }); return; }
-  await interaction.deferReply({ ephemeral: true });
-  const field = (id: string) => { try { return interaction.fields.getTextInputValue(id); } catch { return ''; } };
-  const fields = { summary: field('summary'), steps: field('steps'), expected: field('expected'), actual: field('actual'), version: field('version') };
-  const opener = await interaction.guild.members.fetch(interaction.user.id);
-  const channel = await createTicket(interaction.guild, opener.user, category, { extraEmbeds: [bugEmbed(fields)] });
-  if (!channel) { await interaction.editReply({ content: 'Could not create your ticket. Staff have been notified.' }); return; }
-  await interaction.editReply({ content: `Bug report submitted: <#${channel.id}>` });
 }

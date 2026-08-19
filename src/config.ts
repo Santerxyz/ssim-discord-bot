@@ -17,23 +17,21 @@ function opt(name: string, def = ''): string {
   return v === undefined || v === '' ? def : v.trim();
 }
 
-export type TicketKind = 'support' | 'bug' | 'billing' | 'other';
-
 export interface TicketCategory {
   id: string;          // stable key used inside customId. Do not rename after launch.
-  label: string;       // select-menu label
-  description: string;  // select-menu description
+  label: string;       // shown on the panel button or select-menu option
+  description: string; // one line under the label
   intro: string;       // first bot message inside the ticket
   staffPing: boolean;  // ping STAFF_ROLE_ID on open
-  kind: TicketKind;
 }
 
-// Add, remove, or rename here (keep `id` stable). No code change needed.
+// Add, remove, or rename here (keep `id` stable). No code change needed: one entry
+// renders the panel as a single button, two or more render it as a select menu.
 // Panels already posted embed the topic id in their custom IDs, which is why an existing
 // id must stay stable even if its label changes.
 export const TICKET_CATEGORIES: TicketCategory[] = [
   {
-    id: 'support', label: 'Support', kind: 'support',
+    id: 'support', label: 'Support',
     description: 'Questions, technical issues, or assistance',
     intro: 'Please describe your request in as much detail as possible, and a member of our team will assist you shortly.',
     staffPing: true,

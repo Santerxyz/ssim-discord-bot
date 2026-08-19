@@ -1,17 +1,17 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  tickets.ts: the ticket system. Persistent panel, lifecycle (create, claim,
-//  close), transcripts to the log channel and the opener's DMs, the bug-report
-//  modal, and inactivity auto-close.
+//  close), transcripts to the log channel and the opener's DMs, and inactivity
+//  auto-close.
 // ════════════════════════════════════════════════════════════════════════════
 import {
   Client, Guild, GuildMember, TextChannel, ChannelType, PermissionFlagsBits, Message,
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
-  ModalBuilder, TextInputBuilder, TextInputStyle, User, OverwriteResolvable,
+  MessageActionRowComponentBuilder, User, OverwriteResolvable,
 } from 'discord.js';
 import { config, TICKET_CATEGORIES, TicketCategory } from './config';
 import { store, Ticket } from './store';
 import { logger } from './logger';
-import { BRAND, redactKey } from './util';
+import { BRAND } from './util';
 import { audit } from './audit';
 
 export function categoryById(id: string): TicketCategory | undefined {
@@ -22,33 +22,37 @@ const pad4 = (n: number) => String(n).padStart(4, '0');
 const cleanName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'user';
 
 // ── The persistent panel ──────────────────────────────────────────────────────
-export function buildPanel(): { embeds: EmbedBuilder[]; components: ActionRowBuilder<StringSelectMenuBuilder>[] } {
+// One topic gets a single button, because a dropdown holding one option asks the
+// reader to make a choice that does not exist. Two or more get the select menu,
+// which is what TICKET_CATEGORIES is for. Either way the next click opens the
+// ticket: there is no separate confirmation step, since the panel already names
+// every topic and createTicket() returns the existing channel on a second press.
+export function buildPanel(): { embeds: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] } {
+  const only = TICKET_CATEGORIES.length === 1 ? TICKET_CATEGORIES[0] : undefined;
   const embed = new EmbedBuilder()
     .setColor(BRAND)
-    .setTitle('Support & Access')
+    .setTitle('Support')
     .setDescription(
-      'Open a private ticket with our team. Select a topic below to begin.\n\n' +
-      TICKET_CATEGORIES.map((c) => `**${c.label}**\n${c.description}`).join('\n\n'),
+      only
+        ? `${only.description}.\n\nOpening a ticket creates a private channel between you and our team.`
+        : 'Open a private ticket with our team. Select a topic below to begin.\n\n' +
+          TICKET_CATEGORIES.map((c) => `**${c.label}**\n${c.description}`).join('\n\n'),
     )
     .setFooter({ text: 'SSIM' });
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('ticket:select')
-    .setPlaceholder('Select a topic to continue…')
-    .addOptions(TICKET_CATEGORIES.map((c) => ({ label: c.label, value: c.id, description: c.description })));
-  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
-  return { embeds: [embed], components: [row] };
-}
 
-// Step 2 of the flow: after a topic is picked, the user confirms with an explicit "Create Ticket".
-export function buildCreatePrompt(category: TicketCategory): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
-  const embed = new EmbedBuilder()
-    .setColor(BRAND)
-    .setTitle('Open a ticket')
-    .setDescription(`**Topic:** ${category.label}\n\nClick **Create Ticket** to open a private channel with our team.`);
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`ticket:create:${category.id}`).setLabel('Create Ticket').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('ticket:cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary),
-  );
+  const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
+  if (only) {
+    row.addComponents(
+      new ButtonBuilder().setCustomId(`ticket:open:${only.id}`).setLabel('Open a ticket').setStyle(ButtonStyle.Primary),
+    );
+  } else {
+    row.addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('ticket:select')
+        .setPlaceholder('Select a topic to continue')
+        .addOptions(TICKET_CATEGORIES.map((c) => ({ label: c.label, value: c.id, description: c.description }))),
+    );
+  }
   return { embeds: [embed], components: [row] };
 }
 
@@ -57,12 +61,6 @@ export async function postPanel(client: Client): Promise<TextChannel> {
   if (!ch || ch.type !== ChannelType.GuildText) throw new Error('ONBOARDING_CHANNEL_ID is not a text channel');
   await (ch as TextChannel).send(buildPanel());
   return ch as TextChannel;
-}
-
-function closeRow(): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId('ticket:close').setLabel('Close ticket').setStyle(ButtonStyle.Danger),
-  );
 }
 
 // ── Create ──────────────────────────────────────────────────────────────────────
@@ -176,9 +174,6 @@ export async function closeTicket(channel: TextChannel, closedBy: User, reason?:
   if (deleted) store.removeTicket(channel.id);
 }
 
-// Defence in depth: anything shaped like a credential that reached channel text is
-// redacted before it is written into a transcript.
-const KEY_RE = /SSIM-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/g;
 const escHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
 async function buildTranscript(channel: TextChannel, t?: Ticket): Promise<{ buffer: Buffer; filename: string }> {
@@ -197,7 +192,7 @@ async function buildTranscript(channel: TextChannel, t?: Ticket): Promise<{ buff
   collected.reverse();
   const number = t ? pad4(t.number) : 'unknown';
   const rows = collected.map((m) => {
-    const safe = (s: string) => escHtml(s.replace(KEY_RE, (k) => redactKey(k)));
+    const safe = (s: string) => escHtml(s);
     return `<div class="m"><span class="t">${m.at}</span> <span class="a">${safe(m.author)}</span><div class="c">${safe(m.content) || '<i>(no text)</i>'}</div></div>`;
   }).join('\n');
   const html =
@@ -219,37 +214,12 @@ export async function removeUser(channel: TextChannel, user: User): Promise<void
   await channel.permissionOverwrites.edit(user.id, { ViewChannel: false });
 }
 
-// ── Bug Report modal ────────────────────────────────────────────────────────────
-const tiRow = (input: TextInputBuilder) => new ActionRowBuilder<TextInputBuilder>().addComponents(input);
-
-export function buildBugModal(): ModalBuilder {
-  return new ModalBuilder().setCustomId('bug:modal').setTitle('Bug Report').addComponents(
-    tiRow(new TextInputBuilder().setCustomId('summary').setLabel('Summary').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100)),
-    tiRow(new TextInputBuilder().setCustomId('steps').setLabel('Steps to reproduce').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000)),
-    tiRow(new TextInputBuilder().setCustomId('expected').setLabel('Expected result').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(500)),
-    tiRow(new TextInputBuilder().setCustomId('actual').setLabel('Actual result').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(500)),
-    tiRow(new TextInputBuilder().setCustomId('version').setLabel('SSIM version / build').setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(40)),
-  );
-}
-
-export function bugEmbed(f: { summary: string; steps: string; expected: string; actual: string; version: string }): EmbedBuilder {
-  return new EmbedBuilder().setColor(BRAND).setTitle('🐛 Bug Report').addFields(
-    { name: 'Summary', value: f.summary || '-' },
-    { name: 'Steps to reproduce', value: f.steps || '-' },
-    { name: 'Expected', value: f.expected || '-', inline: true },
-    { name: 'Actual', value: f.actual || '-', inline: true },
-    { name: 'Version', value: f.version || '-', inline: true },
-  );
-}
-
 // ── activity tracking + inactivity auto-close ───────────────────────────────────
 export function trackActivity(message: Message): void {
   if (message.author?.bot) return;
   const t = store.getTicket(message.channelId);
   if (t && !t.closed) store.updateTicket(message.channelId, { lastActivityAt: new Date().toISOString(), warnedAt: undefined });
 }
-
-export { closeRow };
 
 export async function sweepAutoClose(client: Client): Promise<void> {
   const hours = config.ticketAutocloseHours;

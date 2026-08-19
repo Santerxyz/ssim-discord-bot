@@ -31,13 +31,6 @@ export function isNewer(remote: string, local: string): boolean {
   return false;
 }
 
-/** "SSIM-2YE7-9EST-V2MT-3N3P" → "SSIM-••••-••••-••••-3N3P" (only the last group kept). */
-export function redactKey(key: string): string {
-  const parts = String(key || '').split('-');
-  if (parts.length < 2) return '••••';
-  return `${parts[0]}-••••-••••-••••-${parts[parts.length - 1]}`;
-}
-
 /**
  * Verify the push-to-announce HMAC. The publisher signs the exact body bytes:
  *   HMAC-SHA256(secret, rawBody) → hex, header  "X-SSIM-Signature: sha256=<hex>".
@@ -68,20 +61,3 @@ export function sanitizeNotes(notes: string, max = 3500): string {
   if (s.length > max) s = s.slice(0, max - 1) + '…';
   return s;
 }
-
-/** In-memory fixed-window rate limiter. Not persisted, so it resets on restart, which is fine for abuse
- *  guards). Returns { ok, retryAfterMs }. */
-export function createRateLimiter(windowMs: number, max: number) {
-  const hits = new Map<string, { count: number; resetAt: number }>();
-  return function check(subject: string): { ok: boolean; retryAfterMs: number } {
-    const now = Date.now();
-    let e = hits.get(subject);
-    if (!e || now > e.resetAt) { e = { count: 0, resetAt: now + windowMs }; hits.set(subject, e); }
-    e.count += 1;
-    if (hits.size > 10000) for (const [k, v] of hits) if (now > v.resetAt) hits.delete(k);
-    return e.count > max ? { ok: false, retryAfterMs: e.resetAt - now } : { ok: true, retryAfterMs: 0 };
-  };
-}
-
-/** Sleep helper for retry_after backoff. */
-export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

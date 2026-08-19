@@ -24,11 +24,11 @@ release, carrying a link button for the full install and a link button for the
 current version's executable. Members always have one place to look, and old
 posts never linger with stale links.
 
-**Support tickets.** A panel where a member picks a topic, confirms, and gets a
-private channel with staff. Tickets can be claimed, users can be added or
-removed, and closing one produces an HTML transcript that goes to the staff log
-channel and to the person who opened it. Optional inactivity auto-close posts a
-warning first and gives a two hour grace period.
+**Support tickets.** A panel with one button. A member clicks it and gets a private
+channel with staff, no menus and no confirmation step in between. Tickets can be
+claimed, users can be added or removed, and closing one produces an HTML transcript
+that goes to the staff log channel and to the person who opened it. Optional
+inactivity auto-close posts a warning first and gives a two hour grace period.
 
 **Staff posts.** `/post` publishes a branded embed under a short name, and
 running `/post` with the same name again reopens the editor prefilled and edits
@@ -362,9 +362,14 @@ src/index.ts         entry point
 ```
 
 Ticket topics are data, not code. Add or remove entries in `TICKET_CATEGORIES` in
-[`src/config.ts`](src/config.ts) and the panel, the select menu, and the channel
-naming all follow. Keep the `id` of an existing topic stable, because it is
-embedded in the interaction custom IDs of panels already posted.
+[`src/config.ts`](src/config.ts) and the panel and the channel naming both follow.
+The panel adapts to how many there are: a single topic renders as one **Open a
+ticket** button, and two or more render as a select menu listing them. Either way
+the next click opens the ticket.
+
+Keep the `id` of an existing topic stable, because it is embedded in the
+interaction custom IDs of panels already posted. Changing a `label` or a
+`description` is safe; changing an `id` orphans every panel already in the channel.
 
 ## Security
 
@@ -374,8 +379,13 @@ mentions disabled, so nothing in a release body can ping your server.
 
 The announce endpoint verifies its HMAC in constant time and refuses every
 request when no secret is configured. Ticket channels are private by permission
-overwrite rather than by obscurity. Transcripts are stripped of anything matching
-a credential pattern before they are written.
+overwrite rather than by obscurity, and transcripts are HTML-escaped so nothing
+pasted into a ticket can alter the document.
+
+Transcripts otherwise reproduce what was said verbatim. Anything a member pastes
+into a ticket, including a credential they should not have shared, ends up in the
+transcript sent to the log channel and to their DMs. Treat that channel as
+sensitive.
 
 `.env` is gitignored and must stay that way. To report a vulnerability, see
 [SECURITY.md](SECURITY.md).

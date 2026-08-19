@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import crypto from 'node:crypto';
-import { isNewer, redactKey, verifyAnnounceHmac, sanitizeNotes, formatReleaseDate } from '../src/util';
+import { isNewer, verifyAnnounceHmac, sanitizeNotes, formatReleaseDate } from '../src/util';
 
 test('isNewer: 3-part numeric semver (matches the client)', () => {
   assert.equal(isNewer('1.3.4', '1.3.3'), true);
@@ -9,11 +9,6 @@ test('isNewer: 3-part numeric semver (matches the client)', () => {
   assert.equal(isNewer('1.3.3', '1.3.4'), false);
   assert.equal(isNewer('2.0.0', '1.9.9'), true);
   assert.equal(isNewer('1.10.0', '1.9.0'), true); // numeric, not lexical
-});
-
-test('redactKey keeps only the last group', () => {
-  assert.equal(redactKey('SSIM-2YE7-9EST-V2MT-3N3P'), 'SSIM-••••-••••-••••-3N3P');
-  assert.equal(redactKey('garbage'), '••••');
 });
 
 test('verifyAnnounceHmac round-trips the publisher signing scheme', () => {

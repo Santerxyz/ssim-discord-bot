@@ -1,10 +1,10 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  util.ts — pure helpers (NO discord.js, NO config import) so they stay unit-
+//  util.ts: pure helpers (no discord.js, no config import) so they stay unit-
 //  testable in isolation and can be reused anywhere.
 // ════════════════════════════════════════════════════════════════════════════
 import crypto from 'node:crypto';
 
-/** SSIM brand violet (#7e22ce — the app's brand.dark). Reads cleaner/less pink than the brighter
+/** SSIM brand violet (#7e22ce, the app's brand.dark). Reads cleaner and less pink than the brighter
  *  #9333ea as a Discord embed bar, while staying on-theme. Used on every embed. */
 export const BRAND = 0x7e22ce;
 
@@ -17,7 +17,7 @@ export function formatReleaseDate(iso?: string): string {
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()} ${d.getUTCFullYear()}`;
 }
 
-/** 3-part numeric semver compare — IDENTICAL to the client's Updater.isNewer, so the bot's
+/** 3-part numeric semver compare, identical to the client's Updater.isNewer, so the bot's
  *  "is this release newer?" decision matches what the app itself would do. */
 export function isNewer(remote: string, local: string): boolean {
   const r = String(remote).split('.').map((n) => parseInt(n, 10) || 0);
@@ -39,9 +39,9 @@ export function redactKey(key: string): string {
 }
 
 /**
- * Verify the publish → announce HMAC. build/publish.js signs the EXACT body bytes:
+ * Verify the push-to-announce HMAC. The publisher signs the exact body bytes:
  *   HMAC-SHA256(secret, rawBody) → hex, header  "X-SSIM-Signature: sha256=<hex>".
- * Constant-time compare; false on any malformed input.
+ * Constant-time compare. False on any malformed input.
  */
 export function verifyAnnounceHmac(secret: string, rawBody: Buffer, header?: string | null): boolean {
   if (!secret || !header) return false;
@@ -54,12 +54,12 @@ export function verifyAnnounceHmac(secret: string, rawBody: Buffer, header?: str
 }
 
 /**
- * Make release notes safe to drop INSIDE a ```diff fence. The notes are author-written but reach
- * the bot via the untrusted /version surface, so we defensively:
+ * Make release notes safe to drop inside a ```diff fence. The notes are author-written but
+ * arrive from outside the bot, so they are treated as untrusted:
  *   - neutralise ``` (fence-break) with a zero-width space,
- *   - defang @everyone/@here (we ALSO send allowedMentions:none),
+ *   - defang @everyone and @here (every message is also sent with mentions disabled),
  *   - cap length so one field can't blow past Discord's 4096-char embed limit.
- * Normal +/- lines are preserved verbatim ⇒ the diff stays pixel-identical.
+ * Normal +/- lines are preserved verbatim, so the diff renders exactly as written.
  */
 export function sanitizeNotes(notes: string, max = 3500): string {
   let s = String(notes ?? '');
@@ -69,7 +69,7 @@ export function sanitizeNotes(notes: string, max = 3500): string {
   return s;
 }
 
-/** In-memory fixed-window rate limiter (not persisted — resets on restart, which is fine for abuse
+/** In-memory fixed-window rate limiter. Not persisted, so it resets on restart, which is fine for abuse
  *  guards). Returns { ok, retryAfterMs }. */
 export function createRateLimiter(windowMs: number, max: number) {
   const hits = new Map<string, { count: number; resetAt: number }>();

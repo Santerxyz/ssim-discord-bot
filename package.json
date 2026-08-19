@@ -2,7 +2,17 @@
   "name": "ssim-discord-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "SSIM (Santer) Discord bot — release announcements, license retrieval, and support tickets",
+  "description": "Discord bot for the SSIM community server: release announcements, a self-updating downloads channel, and support tickets",
+  "license": "Apache-2.0",
+  "author": "Santer.xyz",
+  "homepage": "https://github.com/Santerxyz/ssim-discord-bot",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Santerxyz/ssim-discord-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Santerxyz/ssim-discord-bot/issues"
+  },
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

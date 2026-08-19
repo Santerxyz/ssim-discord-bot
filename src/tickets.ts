@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  tickets.ts — the ticket system: persistent panel, lifecycle (create / claim /
-//  close), transcripts (→ log channel + opener DM), the Bug Report modal, and
-//  inactivity auto-close. License-category logic lives in licenseFlow.ts.
+//  tickets.ts: the ticket system. Persistent panel, lifecycle (create, claim,
+//  close), transcripts to the log channel and the opener's DMs, the bug-report
+//  modal, and inactivity auto-close.
 // ════════════════════════════════════════════════════════════════════════════
 import {
   Client, Guild, GuildMember, TextChannel, ChannelType, PermissionFlagsBits, Message,
@@ -44,7 +44,7 @@ export function buildCreatePrompt(category: TicketCategory): { embeds: EmbedBuil
   const embed = new EmbedBuilder()
     .setColor(BRAND)
     .setTitle('Open a ticket')
-    .setDescription(`**Topic** — ${category.label}\n\nClick **Create Ticket** to open a private channel with our team.`);
+    .setDescription(`**Topic:** ${category.label}\n\nClick **Create Ticket** to open a private channel with our team.`);
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ticket:create:${category.id}`).setLabel('Create Ticket').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('ticket:cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary),
@@ -69,7 +69,7 @@ function closeRow(): ActionRowBuilder<ButtonBuilder> {
 export async function createTicket(
   guild: Guild, opener: User, category: TicketCategory, opts?: { extraEmbeds?: EmbedBuilder[] },
 ): Promise<TextChannel | null> {
-  // one open ticket per user per category — reuse if it still exists
+  // one open ticket per user per category. Reuse it if the channel still exists.
   const existing = store.openTicketFor(opener.id, category.id);
   if (existing) {
     const ch = await guild.channels.fetch(existing.channelId).catch(() => null);
@@ -142,7 +142,7 @@ export async function claimTicket(channel: TextChannel, staff: GuildMember): Pro
 export async function closeTicket(channel: TextChannel, closedBy: User, reason?: string): Promise<void> {
   const t = store.getTicket(channel.id);
   const number = t ? pad4(t.number) : '????';
-  await channel.send({ content: `Closing ticket #${number}${reason ? ` — ${reason}` : ''}. Generating transcript…`, allowedMentions: { parse: [] } }).catch(() => {});
+  await channel.send({ content: `Closing ticket #${number}${reason ? `, reason: ${reason}` : ''}. Generating transcript...`, allowedMentions: { parse: [] } }).catch(() => {});
 
   const transcript = await buildTranscript(channel, t);
 
@@ -150,8 +150,8 @@ export async function closeTicket(channel: TextChannel, closedBy: User, reason?:
     const log = await channel.client.channels.fetch(config.channels.ticketLog).catch(() => null);
     if (log && log.isTextBased()) {
       const embed = new EmbedBuilder().setColor(BRAND).setTitle(`Ticket #${number} closed`).setTimestamp().addFields(
-        { name: 'Category', value: t ? (categoryById(t.categoryId)?.label || t.categoryId) : '—', inline: true },
-        { name: 'Opened by', value: t ? `<@${t.openerId}>` : '—', inline: true },
+        { name: 'Category', value: t ? (categoryById(t.categoryId)?.label || t.categoryId) : '-', inline: true },
+        { name: 'Opened by', value: t ? `<@${t.openerId}>` : '-', inline: true },
         { name: 'Closed by', value: `<@${closedBy.id}>`, inline: true },
       );
       if (reason) embed.addFields({ name: 'Reason', value: reason });
@@ -169,15 +169,15 @@ export async function closeTicket(channel: TextChannel, closedBy: User, reason?:
     }
   }
 
-  await audit(channel.client, 'ticket_close', { ticket: `#${number}`, closedBy: closedBy.tag, reason: reason || '—' });
+  await audit(channel.client, 'ticket_close', { ticket: `#${number}`, closedBy: closedBy.tag, reason: reason || '-' });
 
   store.updateTicket(channel.id, { closed: true });
   const deleted = await channel.delete(`ticket #${number} closed by ${closedBy.tag}`).then(() => true).catch((err) => { logger.error('ticket delete failed', { err: (err as Error).message }); return false; });
   if (deleted) store.removeTicket(channel.id);
 }
 
-// Any full key that somehow slipped into channel text is redacted in the transcript (keys are
-// only ever DM'd/ephemeral, so this is defence in depth).
+// Defence in depth: anything shaped like a credential that reached channel text is
+// redacted before it is written into a transcript.
 const KEY_RE = /SSIM-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/g;
 const escHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
 
@@ -206,7 +206,7 @@ async function buildTranscript(channel: TextChannel, t?: Ticket): Promise<{ buff
     `.m{border-bottom:1px solid #23232e;padding:8px 0}.t{color:#6b7280;font-size:12px}` +
     `.a{color:#a78bfa;font-weight:600;margin-left:6px}.c{white-space:pre-wrap;margin-top:2px}h1{color:#9333ea}</style>` +
     `<h1>SSIM • Ticket #${number}</h1>` +
-    `<p>Category: ${t ? escHtml(categoryById(t.categoryId)?.label || t.categoryId) : '—'} · Opener: ${escHtml(t?.openerTag || '—')} · ${collected.length} messages</p>` +
+    `<p>Category: ${t ? escHtml(categoryById(t.categoryId)?.label || t.categoryId) : '-'} · Opener: ${escHtml(t?.openerTag || '-')} · ${collected.length} messages</p>` +
     rows;
   return { buffer: Buffer.from(html, 'utf8'), filename: `ticket-${number}.html` };
 }
@@ -234,11 +234,11 @@ export function buildBugModal(): ModalBuilder {
 
 export function bugEmbed(f: { summary: string; steps: string; expected: string; actual: string; version: string }): EmbedBuilder {
   return new EmbedBuilder().setColor(BRAND).setTitle('🐛 Bug Report').addFields(
-    { name: 'Summary', value: f.summary || '—' },
-    { name: 'Steps to reproduce', value: f.steps || '—' },
-    { name: 'Expected', value: f.expected || '—', inline: true },
-    { name: 'Actual', value: f.actual || '—', inline: true },
-    { name: 'Version', value: f.version || '—', inline: true },
+    { name: 'Summary', value: f.summary || '-' },
+    { name: 'Steps to reproduce', value: f.steps || '-' },
+    { name: 'Expected', value: f.expected || '-', inline: true },
+    { name: 'Actual', value: f.actual || '-', inline: true },
+    { name: 'Version', value: f.version || '-', inline: true },
   );
 }
 

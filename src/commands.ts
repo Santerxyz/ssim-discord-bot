@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  commands.ts — slash-command definitions, idempotent guild registration, and
-//  the staff command handlers (/assign /unassign /whois /close /add /remove
-//  /announce /panel). All are gated on the STAFF_ROLE in-handler.
+//  commands.ts: slash-command definitions, idempotent guild registration, and
+//  the staff command handlers (/close, /add, /remove, /announce, /panel, /post).
+//  All are gated on STAFF_ROLE_ID inside the handler.
 // ════════════════════════════════════════════════════════════════════════════
 import {
   SlashCommandBuilder, REST, Routes, ChatInputCommandInteraction, TextChannel, PermissionFlagsBits, ChannelType,

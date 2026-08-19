@@ -1,8 +1,8 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  httpServer.ts — the tiny internal HTTP endpoint the publisher pings.
+//  httpServer.ts: the small internal HTTP endpoint a publisher pings.
 //    POST /internal/announce   (HMAC-verified)  → trigger an announce reconcile
 //    GET  /health                               → liveness/readiness
-//  No express — node:http keeps the dependency surface minimal.
+//  No express. node:http keeps the dependency surface minimal.
 // ════════════════════════════════════════════════════════════════════════════
 import http from 'node:http';
 import { config } from './config';
@@ -44,7 +44,7 @@ export function startHttpServer(isReady: () => boolean): http.Server {
           logger.warn('announce push rejected: invalid HMAC signature');
           return send(401, { error: 'invalid signature' });
         }
-        // The push is a TRIGGER only — the bot re-fetches /version itself and dedupes.
+        // The push is a trigger only. The bot re-fetches the release itself and dedupes.
         maybeAnnounce('push');
         return send(202, { ok: true });
       }

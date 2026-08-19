@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  store.ts — tiny JSON persistence with atomic writes.
+//  store.ts: small JSON persistence layer with atomic writes.
 //  State lives in memory; every mutation is synchronous then persisted atomically
 //  (temp file + rename), so concurrent interactions can't corrupt or race it.
 // ════════════════════════════════════════════════════════════════════════════
@@ -51,8 +51,8 @@ function load(): BotState {
       };
     }
   } catch (err) {
-    // Never crash on a corrupt store — set it aside and start fresh.
-    logger.error('state.json unreadable — starting fresh', { err: (err as Error).message });
+    // Never crash on a corrupt store. Set it aside and start fresh.
+    logger.error('state.json unreadable, starting fresh', { err: (err as Error).message });
     try { fs.copyFileSync(FILE, `${FILE}.corrupt-${Date.now()}`); } catch { /* best effort */ }
   }
   return { lastAnnouncedVersion: '0.0.0', ticketCounter: 0, tickets: {}, downloadsMessageId: null, posts: {} };

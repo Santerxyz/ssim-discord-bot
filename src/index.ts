@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  index.ts — entry point. Boots the Discord client, the internal HTTP server
+//  index.ts: entry point. Boots the Discord client, the internal HTTP server
 //  (publish → announce trigger), the announce poller, and the ticket auto-close
 //  sweep. `--register-only` just (re)registers slash commands and exits.
 // ════════════════════════════════════════════════════════════════════════════
@@ -15,7 +15,7 @@ import { sweepAutoClose, trackActivity } from './tickets';
 async function main(): Promise<void> {
   if (process.argv.includes('--register-only')) {
     await registerCommands();
-    logger.info('slash-command registration complete — exiting (--register-only)');
+    logger.info('slash-command registration complete, exiting (--register-only)');
     return;
   }
 
@@ -50,8 +50,8 @@ async function main(): Promise<void> {
   client.on(Events.Error, (err) => logger.error('client error', { err: err.message }));
 
   process.on('unhandledRejection', (err) => logger.error('unhandledRejection', { err: String(err) }));
-  process.on('SIGINT', () => { logger.info('SIGINT — shutting down'); client.destroy(); process.exit(0); });
-  process.on('SIGTERM', () => { logger.info('SIGTERM — shutting down'); client.destroy(); process.exit(0); });
+  process.on('SIGINT', () => { logger.info('SIGINT received, shutting down'); client.destroy(); process.exit(0); });
+  process.on('SIGTERM', () => { logger.info('SIGTERM received, shutting down'); client.destroy(); process.exit(0); });
 
   await client.login(config.token);
 }

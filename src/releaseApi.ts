@@ -1,14 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  releaseApi.ts — reads the latest SSIM release from the GitHub Releases API.
+//  releaseApi.ts: reads the latest release from the GitHub Releases API.
 //
-//  Replaces the old `licenseApi.getVersion()` path. The licence server is being
-//  retired, and its /version endpoint went with it; announcements used to read
-//  from there, so they would have stopped SILENTLY the moment it was shut down.
-//
-//  GitHub is a better source for this anyway: the release body IS the notes and
-//  published_at IS the date, so the bot no longer depends on those being plumbed
-//  through a publish step. The endpoint is public — no token, and none should be
-//  added, since a leaked bot token is worse than an anonymous rate limit.
+//  The release body is the notes and published_at is the date, so nothing has to
+//  be plumbed through a publish step. The endpoint is public, so no token is sent
+//  and none should be added: a leaked token is worse than an anonymous rate limit.
 // ════════════════════════════════════════════════════════════════════════════
 import { config } from './config';
 import { logger } from './logger';
@@ -52,9 +47,8 @@ function pickDownloadUrl(assets: GitHubAsset[] | undefined): string | undefined 
 /**
  * Latest published (non-draft, non-prerelease) release.
  *
- * NOTE: `/releases/latest` already excludes drafts and prereleases, which is
- * what we want — a supporter-only prerelease must never trigger a public
- * announcement.
+ * Note: `/releases/latest` already excludes drafts and prereleases, which is
+ * what we want. A prerelease must never trigger a public announcement.
  */
 export async function getLatestRelease(): Promise<ApiResult<VersionManifest>> {
   const url = `https://api.github.com/repos/${config.githubRepo}/releases/latest`;

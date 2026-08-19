@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  perms.ts — staff-role gate. Works for both a full GuildMember (roles.cache)
+//  perms.ts: staff-role gate. Works for both a full GuildMember (roles.cache)
 //  and the raw APIInteractionGuildMember (roles: string[]).
 // ════════════════════════════════════════════════════════════════════════════
 import { GuildMember, APIInteractionGuildMember } from 'discord.js';

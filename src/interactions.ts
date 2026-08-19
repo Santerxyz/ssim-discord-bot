@@ -1,8 +1,8 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  interactions.ts — the single InteractionCreate router. Dispatches slash
-//  commands, the panel select, ticket/license buttons, and modal submits.
-//  Wraps everything so a handler throw becomes a friendly ephemeral, never a
-//  silent dead interaction.
+//  interactions.ts: the single InteractionCreate router. Dispatches slash
+//  commands, the panel select, ticket buttons, and modal submits. Wraps
+//  everything so a handler throw becomes a friendly ephemeral reply rather than
+//  a silent dead interaction.
 // ════════════════════════════════════════════════════════════════════════════
 import {
   Interaction, StringSelectMenuInteraction, ButtonInteraction, ModalSubmitInteraction, TextChannel,
@@ -31,14 +31,14 @@ export async function handleInteraction(interaction: Interaction): Promise<void>
   }
 }
 
-// ── Panel step 1 — pick a topic → ephemeral "Create Ticket" confirmation ────────
+// ── Panel step 1: pick a topic, get an ephemeral "Create Ticket" confirmation ───
 async function onTopicSelect(interaction: StringSelectMenuInteraction): Promise<void> {
   const category = categoryById(interaction.values[0]);
   if (!category) { await interaction.reply({ ephemeral: true, content: 'Unknown topic.' }); return; }
   await interaction.reply({ ephemeral: true, ...buildCreatePrompt(category) });
 }
 
-// ── Panel step 2 — the user clicks "Create Ticket" → open the private channel ────
+// ── Panel step 2: the user clicks "Create Ticket", we open the private channel ──
 async function onCreateTicket(interaction: ButtonInteraction, categoryId: string): Promise<void> {
   const category = categoryById(categoryId);
   if (!category || !interaction.guild) { await interaction.update({ content: 'Unknown topic.', embeds: [], components: [] }); return; }
@@ -96,6 +96,6 @@ async function onBugModal(interaction: ModalSubmitInteraction): Promise<void> {
   const fields = { summary: field('summary'), steps: field('steps'), expected: field('expected'), actual: field('actual'), version: field('version') };
   const opener = await interaction.guild.members.fetch(interaction.user.id);
   const channel = await createTicket(interaction.guild, opener.user, category, { extraEmbeds: [bugEmbed(fields)] });
-  if (!channel) { await interaction.editReply({ content: 'Could not create your ticket — staff notified.' }); return; }
+  if (!channel) { await interaction.editReply({ content: 'Could not create your ticket. Staff have been notified.' }); return; }
   await interaction.editReply({ content: `Bug report submitted: <#${channel.id}>` });
 }

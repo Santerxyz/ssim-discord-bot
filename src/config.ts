@@ -1,8 +1,8 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  config.ts — env loading + validation + the ticket-category config.
+//  config.ts: env loading, validation, and the ticket topic config.
 //
-//  Fails FAST (throws) if a required var is missing — no silent half-configured
-//  bot. Importing this module has side effects (reads .env), so pure/testable
+//  Fails fast (throws) if a required var is missing, so there is no silently
+//  half-configured bot. Importing this module reads .env, so pure and testable
 //  modules (util, format) MUST NOT import it.
 // ════════════════════════════════════════════════════════════════════════════
 import 'dotenv/config';
@@ -20,7 +20,7 @@ function opt(name: string, def = ''): string {
 export type TicketKind = 'support' | 'bug' | 'billing' | 'other';
 
 export interface TicketCategory {
-  id: string;          // stable key used inside customId — DO NOT rename after launch
+  id: string;          // stable key used inside customId. Do not rename after launch.
   label: string;       // select-menu label
   description: string;  // select-menu description
   intro: string;       // first bot message inside the ticket
@@ -28,9 +28,9 @@ export interface TicketCategory {
   kind: TicketKind;
 }
 
-// Add / remove / rename here (keep `id` stable) — no code change needed.
-// The 'license' category was removed with the licence system: SSIM is free software,
-// there is nothing to retrieve, generate or activate.
+// Add, remove, or rename here (keep `id` stable). No code change needed.
+// Panels already posted embed the topic id in their custom IDs, which is why an existing
+// id must stay stable even if its label changes.
 export const TICKET_CATEGORIES: TicketCategory[] = [
   {
     id: 'support', label: 'Support', kind: 'support',
@@ -54,14 +54,12 @@ export const config = {
   },
   roles: {
     staff: req('STAFF_ROLE_ID'),
-    betaTester: req('BETA_TESTER_ROLE_ID'),
   },
   announceWebhookUrl: opt('ANNOUNCE_WEBHOOK_URL'),
-  // Full-install ZIP: a single FIXED download link shown in the downloads channel. Stays the same across
-  // releases; the bot uses it automatically. Set once in .env.
+  // Full-install ZIP: one fixed download link shown in the downloads channel. It stays the same
+  // across releases, so it is set once in .env and used automatically.
   downloadZipUrl: opt('DOWNLOAD_ZIP_URL'),
-  // Source of truth for release announcements: "owner/repo" on GitHub. Replaces the old
-  // licence-server /version poll (see releaseApi.ts).
+  // Source of truth for release announcements: "owner/repo" on GitHub (see releaseApi.ts).
   githubRepo: opt('GITHUB_REPO', 'Santerxyz/SSIM').replace(/^\/+|\/+$/g, ''),
   announceHmacSecret: opt('ANNOUNCE_HMAC_SECRET'),
   httpPort: Number(opt('HTTP_PORT', '8787')),

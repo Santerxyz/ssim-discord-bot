@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  post.ts — staff "/post" command: publish (and later EDIT) a branded embed
+//  post.ts: the staff "/post" command. Publishes, and later edits, a branded
 //  message under a short NAME. Running /post with the same name re-opens the
 //  editor pre-filled and edits the existing message in place.
 // ════════════════════════════════════════════════════════════════════════════
@@ -18,7 +18,7 @@ const NAME_RE = /^[a-z0-9_-]{1,32}$/i;
 export async function handlePostCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const name = interaction.options.getString('name', true).trim().toLowerCase();
   if (!NAME_RE.test(name)) {
-    await interaction.reply({ ephemeral: true, content: 'Name must be 1–32 characters: letters, numbers, `-` or `_`.' });
+    await interaction.reply({ ephemeral: true, content: 'Name must be 1 to 32 characters: letters, numbers, `-` or `_`.' });
     return;
   }
   const existing = store.getPost(name);
@@ -61,7 +61,7 @@ export async function handlePostModal(interaction: ModalSubmitInteraction): Prom
   }
   if (!messageId) {
     const msg = await (ch as TextChannel).send(payload).catch((err) => { logger.error('post send failed', { err: (err as Error).message }); return null; });
-    if (!msg) { await interaction.editReply({ content: 'Could not post — check that I can send messages + embeds in that channel.' }); return; }
+    if (!msg) { await interaction.editReply({ content: 'Could not post. Check that I can send messages + embeds in that channel.' }); return; }
     messageId = msg.id;
   }
   store.setPost(name, { channelId, messageId, title, message });

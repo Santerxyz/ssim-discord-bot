@@ -16,7 +16,7 @@ test('redactKey keeps only the last group', () => {
   assert.equal(redactKey('garbage'), '••••');
 });
 
-test('verifyAnnounceHmac round-trips the publish.js signing scheme', () => {
+test('verifyAnnounceHmac round-trips the publisher signing scheme', () => {
   const secret = 'test-secret';
   const body = Buffer.from(JSON.stringify({ version: '1.3.4', url: 'x', notes: 'n', publishedAt: 'p' }));
   const sig = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');

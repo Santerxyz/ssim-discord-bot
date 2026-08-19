@@ -1,14 +1,23 @@
-# deps + build output
+# deps and build output
 node_modules/
 dist/
 
-# SECRETS — never commit
+# SECRETS: never commit
 .env
+.env.*
+!.env.example
 
-# local persistence (tickets, counters, lastAnnouncedVersion, rate-limit/audit)
+# local persistence (tickets, counters, last announced version)
 data/
 
-# logs / misc
+# logs and misc
+logs/
 *.log
 npm-debug.log*
 .DS_Store
+Thumbs.db
+
+# editor and tooling
+.vscode/
+.idea/
+.claude/

@@ -1,13 +1,13 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  announce.ts — release announcements (Feature A).
+//  announce.ts: release announcements.
 //
-//  TWO triggers, ONE idempotent core:
-//    • push  — build/publish.js POSTs an HMAC-signed nudge to /internal/announce
-//    • poll  — every POLL_INTERVAL_MS we reconcile against /version
-//  Both call maybeAnnounce(), which re-fetches the CANONICAL /version and posts only
+//  Two triggers, one idempotent core:
+//    push: a publisher POSTs an HMAC-signed nudge to /internal/announce
+//    poll: every POLL_INTERVAL_MS we reconcile against the GitHub Releases API
+//  Both call maybeAnnounce(), which re-fetches the release itself and posts only
 //  if `latest` is strictly newer than the last announced version. A promise-chain
-//  mutex + compare-after-fetch guarantee exactly-once, forward-only posts — so push
-//  and poll can never double-post, and the poll always catches a missed push.
+//  mutex plus compare-after-fetch guarantee exactly-once, forward-only posts, so
+//  push and poll can never double-post and the poll always catches a missed push.
 // ════════════════════════════════════════════════════════════════════════════
 import { WebhookClient, Client, TextChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { config } from './config';
@@ -43,23 +43,23 @@ async function postUpdate(manifest: VersionManifest): Promise<void> {
 }
 
 // The downloads channel holds ONE message with two download buttons, edited IN PLACE each release:
-//   • Full install (ZIP) — first-time setup     • Update (EXE) — just this version
+//   Full install (ZIP): first-time setup.   Update (EXE): just this version.
 async function upsertDownloads(manifest: VersionManifest): Promise<void> {
   if (!discordClient || !config.channels.downloads) return;
   const ch = await discordClient.channels.fetch(config.channels.downloads).catch(() => null);
   if (!ch || !ch.isTextBased()) { logger.warn('downloads channel not usable'); return; }
   const embed = new EmbedBuilder()
     .setColor(BRAND)
-    .setTitle(`Downloads — SSIM v${manifest.latest}`)
+    .setTitle(`Downloads: SSIM v${manifest.latest}`)
     .setDescription(
-      '**Full install (ZIP)** — download this for a first-time setup; it contains everything you need.\n' +
-      '**Update (EXE)** — installs just this version; use it to update an existing install.',
+      '**Full install (ZIP)**: download this for a first-time setup; it contains everything you need.\n' +
+      '**Update (EXE)**: installs just this version; use it to update an existing install.',
     )
     .setFooter({ text: `Current version: v${manifest.latest}` })
     .setTimestamp();
   const row = new ActionRowBuilder<ButtonBuilder>();
   if (config.downloadZipUrl) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Full install (ZIP)').setURL(config.downloadZipUrl));
-  if (manifest.url) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(`Update — v${manifest.latest} (EXE)`).setURL(manifest.url));
+  if (manifest.url) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(`Update to v${manifest.latest} (EXE)`).setURL(manifest.url));
   const payload = { embeds: [embed], components: row.components.length ? [row] : [] };
 
   const existing = store.downloadsMessageId;
@@ -71,7 +71,7 @@ async function upsertDownloads(manifest: VersionManifest): Promise<void> {
   if (msg) store.setDownloadsMessageId(msg.id);
 }
 
-/** Idempotent, forward-only. Re-fetches /version and posts iff it's newer than the last announced. */
+/** Idempotent and forward-only. Re-fetches the latest release and posts only if it is newer. */
 export function maybeAnnounce(reason: string): Promise<void> {
   chain = chain.then(async () => {
     const res = await getLatestRelease();
@@ -81,20 +81,20 @@ export function maybeAnnounce(reason: string): Promise<void> {
     }
     const latest = res.data.latest;
     const last = store.lastAnnouncedVersion;
-    if (!isNewer(latest, last)) { logger.debug(`announce(${reason}): v${latest} not newer than v${last} — skip`); return; }
+    if (!isNewer(latest, last)) { logger.debug(`announce(${reason}): v${latest} not newer than v${last}, skipping`); return; }
     try {
       await postUpdate(res.data);
       await upsertDownloads(res.data);
       store.setLastAnnouncedVersion(latest);           // advance ONLY on a successful post
       logger.info(`announced v${latest} (${reason})`);
     } catch (err) {
-      logger.error(`announce(${reason}): post failed — will retry on next poll`, { err: (err as Error).message });
+      logger.error(`announce(${reason}): post failed, will retry on next poll`, { err: (err as Error).message });
     }
   }).catch((err) => logger.error('announce chain error', { err: (err as Error).message }));
   return chain;
 }
 
-/** Force-post the CURRENT /version regardless of idempotency (staff /announce). */
+/** Force-post the current release regardless of idempotency (staff /announce). */
 export async function announceNow(): Promise<{ ok: boolean; version?: string; error?: string }> {
   const res = await getLatestRelease();
   if (!res.ok || !res.data || !res.data.latest) return { ok: false, error: 'could not fetch the latest GitHub release' };
@@ -118,7 +118,7 @@ export async function initAnnounce(): Promise<void> {
   if (res.ok && res.data && res.data.latest) {
     if (store.lastAnnouncedVersion === '0.0.0') {
       store.setLastAnnouncedVersion(res.data.latest);
-      logger.info(`announce baseline = v${res.data.latest} (first run — existing release not announced)`);
+      logger.info(`announce baseline = v${res.data.latest} (first run, existing release not announced)`);
       await upsertDownloads(res.data);                 // still publish the downloads message on first boot
     } else if (isNewer(res.data.latest, store.lastAnnouncedVersion)) {
       await maybeAnnounce('startup');                   // posts the update AND refreshes downloads

@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  format.ts — the EXACT release-announcement body. Pure (no discord.js) so its
+//  format.ts: the exact release-announcement body. Pure (no discord.js), so its
 //  pixel-fidelity is unit-tested. The bot only PREPENDS the header, WRAPS the
-//  fence, and APPENDS the manual-update line — it never rewrites the notes.
+//  fence, and appends the manual-update line. It never rewrites the notes.
 // ════════════════════════════════════════════════════════════════════════════
 import { formatReleaseDate, sanitizeNotes } from './util';
 

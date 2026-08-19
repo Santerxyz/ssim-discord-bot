@@ -13,6 +13,7 @@ import { announceNow } from './announce';
 import { store } from './store';
 import { closeTicket, addUser, removeUser, postPanel } from './tickets';
 import { handlePostCommand } from './post';
+import { postIntro } from './intro';
 
 // setDefaultMemberPermissions(ManageMessages) merely de-clutters the picker for non-staff; the real
 // gate is the STAFF_ROLE check in handleCommand (roles ≠ Discord perms).
@@ -32,6 +33,9 @@ export const commands = [
     .addBooleanOption((o) => o.setName('repost').setDescription('Post a new message instead of editing the one already there').setRequired(false))
     .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('panel').setDescription('Staff: post the support/ticket panel here')
+    .setDefaultMemberPermissions(staffPerm),
+  new SlashCommandBuilder().setName('intro').setDescription('Staff: post the SSIM introduction, or update the one already posted')
+    .addChannelOption((o) => o.setName('channel').setDescription('Target channel (default: here)').addChannelTypes(ChannelType.GuildText).setRequired(false))
     .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('post').setDescription('Staff: post or edit a bot message (embed)')
     .addStringOption((o) => o.setName('name').setDescription('Short key to identify/edit this post later').setRequired(true))
@@ -56,6 +60,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     case 'remove': return cmdAddRemove(interaction, false);
     case 'announce': return cmdAnnounce(interaction);
     case 'panel': return cmdPanel(interaction);
+    case 'intro': return cmdIntro(interaction);
     case 'post': return handlePostCommand(interaction);
     default: await interaction.reply({ ephemeral: true, content: 'Unknown command.' });
   }
@@ -85,6 +90,22 @@ async function cmdAnnounce(interaction: ChatInputCommandInteraction): Promise<vo
     : r.action === 'edited' ? `📣 Updated the v${r.version} announcement to match the release notes.`
     : `✅ The v${r.version} announcement already matches the release notes.`;
   await interaction.editReply({ content: said });
+}
+
+async function cmdIntro(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ ephemeral: true });
+  const target = (interaction.options.getChannel('channel') ?? interaction.channel) as TextChannel | null;
+  if (!target || !target.isTextBased()) { await interaction.editReply({ content: '❌ Pick a text channel.' }); return; }
+  try {
+    const r = await postIntro(interaction.client, target);
+    await interaction.editReply({
+      content: r.action === 'posted'
+        ? `📣 Introduction posted in <#${target.id}>. Run \`/intro\` again to update it in place.`
+        : `📣 Updated the introduction in <#${target.id}>.`,
+    });
+  } catch (err) {
+    await interaction.editReply({ content: `❌ ${(err as Error).message}` });
+  }
 }
 
 async function cmdPanel(interaction: ChatInputCommandInteraction): Promise<void> {

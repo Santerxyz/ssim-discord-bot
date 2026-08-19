@@ -103,24 +103,26 @@ async function syncAnnouncement(version: string, content: string, reason: string
   return 'failed';
 }
 
-// The downloads channel holds ONE message with two download buttons, edited IN PLACE each release:
-//   Full install (ZIP): first-time setup.   Update (EXE): just this version.
+// The downloads channel holds ONE message, edited IN PLACE each release, pointing at
+// the current build. Everything here comes from the GitHub release itself, so there is
+// no second link to keep alive anywhere else.
 async function upsertDownloads(manifest: VersionManifest): Promise<void> {
   if (!discordClient || !config.channels.downloads) return;
   const ch = await discordClient.channels.fetch(config.channels.downloads).catch(() => null);
   if (!ch || !ch.isTextBased()) { logger.warn('downloads channel not usable'); return; }
+  const releasePage = `https://github.com/${config.githubRepo}/releases/latest`;
   const embed = new EmbedBuilder()
     .setColor(BRAND)
     .setTitle(`Downloads: SSIM v${manifest.latest}`)
     .setDescription(
-      '**Full install (ZIP)**: download this for a first-time setup; it contains everything you need.\n' +
-      '**Update (EXE)**: installs just this version; use it to update an existing install.',
+      'SSIM is a single executable. Put it in its own folder and run it; it creates everything it needs beside itself.\n\n' +
+      `Every release ships a SHA256SUMS file on the [release page](${releasePage}). Check your download against it before you run it.`,
     )
     .setFooter({ text: `Current version: v${manifest.latest}` })
     .setTimestamp();
   const row = new ActionRowBuilder<ButtonBuilder>();
-  if (config.downloadZipUrl) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Full install (ZIP)').setURL(config.downloadZipUrl));
-  if (manifest.url) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(`Update to v${manifest.latest} (EXE)`).setURL(manifest.url));
+  if (manifest.url) row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(`Download SSIM v${manifest.latest}`).setURL(manifest.url));
+  row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Release page and checksums').setURL(releasePage));
   const payload = { embeds: [embed], components: row.components.length ? [row] : [] };
 
   const existing = store.downloadsMessageId;

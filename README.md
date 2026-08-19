@@ -25,9 +25,20 @@ being posted underneath it. GitHub stays the single source of truth, so the two
 cannot drift apart. See [keeping an announcement current](#keeping-an-announcement-current).
 
 **A downloads channel that stays current.** One message, edited in place on every
-release, carrying a link button for the full install and a link button for the
-current version's executable. Members always have one place to look, and old
-posts never linger with stale links.
+release, linking the current executable and the release page it came from so the
+checksums are one click away. Everything on it is read from the GitHub release, so
+there is no separately hosted link to keep alive. Members always have one place to
+look, and old posts never linger with stale links.
+
+**Members are handled on arrival.** Everyone who joins is given a role
+automatically, and the join is written to a log channel with the invite they came
+in on and who created it. Leaves are logged too, with the roles the member held,
+which is otherwise gone the moment they are.
+
+**An introduction that stays editable.** `/intro` posts a standing description of
+the project as an ordinary message rather than an embed, since an embed narrows the
+column and greys the text at that length. Running it again edits what is already
+there instead of posting a second copy.
 
 **Support tickets.** A panel with one button. A member clicks it and gets a private
 channel with staff, no menus and no confirmation step in between. Tickets can be
@@ -57,7 +68,9 @@ needs to stay editable.
    `DISCORD_TOKEN`. Treat it as a password: anyone holding it controls the bot.
 3. Still on the **Bot** tab, under **Privileged Gateway Intents**, enable
    **Server Members Intent** and **Message Content Intent**, then save. The first
-   is needed to resolve members opening tickets, the second to build transcripts.
+   carries joins and leaves and lets the bot resolve members, the second is what
+   makes transcripts possible. Both are off by default and neither can be replaced
+   by a permission.
 4. On **General Information**, copy the **Application ID**. This is
    `DISCORD_CLIENT_ID`.
 
@@ -67,18 +80,24 @@ Under **OAuth2**, then **URL Generator**, select the scopes `bot` and
 `applications.commands`, then these permissions:
 
 View Channels, Send Messages, Embed Links, Attach Files, Read Message History,
-Manage Channels, Manage Messages, Manage Roles.
+Manage Channels, Manage Messages, Manage Roles, Manage Server.
 
-Open the generated URL and pick your server. Manage Channels creates and deletes
-ticket channels. Manage Roles is required to write channel permission overwrites,
-which is what makes a ticket private; the bot never grants anyone a role, so its
-position in the role list does not matter.
+Open the generated URL and pick your server. Three of those are less obvious than
+the rest:
+
+* **Manage Channels** creates and deletes ticket channels.
+* **Manage Roles** writes the channel permission overwrites that make a ticket
+  private, and grants `MEMBER_ROLE_ID` on join.
+* **Manage Server** reads the invite list. Discord never says which invite somebody
+  used, so the only way to attribute a join is to watch the use counts, and reading
+  them needs this. Without it everything else still works and joins are logged with
+  the invite left as undetermined.
 
 If you would rather build the URL by hand, that permission set is the integer
-`268561424`:
+`268561456`:
 
 ```
-https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot+applications.commands&permissions=268561424
+https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot+applications.commands&permissions=268561456
 ```
 
 ### 3. Create the channels and the staff role
@@ -95,9 +114,16 @@ right-click anything and copy its ID. You need:
 | Channel for the downloads message | `DOWNLOADS_CHANNEL_ID` | no |
 | Staff-only channel for the audit trail | `AUDIT_CHANNEL_ID` | no |
 | Staff-only channel that receives transcripts | `TICKET_LOG_CHANNEL_ID` | no |
+| Staff-only channel for joins and leaves | `MEMBER_LOG_CHANNEL_ID` | no |
+| Role granted to everyone who joins | `MEMBER_ROLE_ID` | no |
 
 `TICKET_CATEGORY_ID` must be a category, not a text channel. The bot creates each
 ticket as a child of it.
+
+If you set `MEMBER_ROLE_ID`, open **Server Settings**, **Roles**, and drag the
+bot's own role **above** the member role. Discord refuses to grant a role that sits
+at or above the granting bot's highest role, and it fails silently from the joiner's
+point of view: they get in with no role and only the bot's log records why.
 
 ### 4. Create the announce webhook, optional
 
@@ -137,8 +163,9 @@ source of truth; the tables below are the summary.
 | `DOWNLOADS_CHANNEL_ID` | none | Home of the edited-in-place downloads message |
 | `AUDIT_CHANNEL_ID` | none | Ticket opens, claims, and closes are mirrored here |
 | `TICKET_LOG_CHANNEL_ID` | none | Receives transcripts on close |
+| `MEMBER_LOG_CHANNEL_ID` | none | Receives a line for every join and leave |
+| `MEMBER_ROLE_ID` | none | Granted to every person who joins. Bots are skipped |
 | `ANNOUNCE_WEBHOOK_URL` | none | Preferred way to post announcements |
-| `DOWNLOAD_ZIP_URL` | none | Fixed link for the full install button. Omit it and only the version button is shown |
 | `GITHUB_REPO` | `Santerxyz/SSIM` | The `owner/repo` the release watcher reads |
 | `ANNOUNCE_HMAC_SECRET` | none | Shared secret for push-triggered announcements. Unset disables the endpoint |
 | `HTTP_PORT` | `8787` | Port for the health and announce endpoints |
@@ -175,6 +202,7 @@ pass.
 | Command | Effect |
 |---|---|
 | `/panel` | Post the ticket panel in this channel |
+| `/intro [channel]` | Post the introduction, or update the one already posted |
 | `/post name:<key> [channel]` | Publish a branded embed, or edit the one already stored under that name |
 | `/announce` | Edit the latest release announcement to match its current GitHub notes |
 | `/announce repost:true` | Post a fresh announcement instead of editing the existing one |
@@ -260,6 +288,44 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 `GET /health` returns `{"ok":true,"ready":<bool>}` and needs no signature.
 `ready` turns true once the gateway connection is up.
+
+## Members
+
+Set `MEMBER_ROLE_ID` and everyone who joins is given that role. Bots are skipped,
+since an application added through OAuth is not a member in the sense the role
+means. The grant runs before anything is logged, because a member actually getting
+in matters more than the audit line about it.
+
+Set `MEMBER_LOG_CHANNEL_ID` and every join and leave is written there. A join
+records the member, how old the account is, the server's new size, the invite used,
+and who created that invite. A leave records how long they were here and the roles
+they held, which is the part worth keeping: once someone is gone, that is the only
+trace of what they had.
+
+### How the invite is worked out
+
+Discord does not tell you which invite a member used. There is no field for it. The
+only way to know is to keep a count of every invite's uses and see which one moved.
+
+So the bot reads the invite list on startup, and again on each join, and compares.
+One count going up by one identifies the invite. When nothing has gone up, it looks
+for an invite that has disappeared instead, because Discord deletes a single-use
+invite the moment it is consumed, and a vanished code is the same evidence.
+
+Four cases end with the invite recorded as undetermined, and all four are honest
+answers rather than bugs:
+
+* The bot is missing **Manage Server**, so it cannot read the list at all.
+* The member came in on the server's vanity URL, which has no entry in the list.
+* The bot was offline when they joined, so there is no baseline to compare.
+* Two people joined close enough together that one join absorbed the other's delta.
+
+The log says which of these it was where it can tell. Everything else about the
+join is still recorded either way.
+
+Joins that happened while the bot was down are not backfilled. Discord does not
+report them after the fact, and the role is granted on the join event, so anyone who
+arrived during an outage needs the role by hand.
 
 ## Deploying
 
@@ -395,6 +461,8 @@ src/releaseApi.ts    GitHub Releases API client
 src/announce.ts      the idempotent announce reconciler and downloads message
 src/httpServer.ts    POST /internal/announce and GET /health
 src/tickets.ts       panel, lifecycle, transcripts, auto-close
+src/members.ts       join and leave handling, the member role, invite attribution
+src/intro.ts         the standing introduction text and its /intro editor
 src/post.ts          the /post editor
 src/commands.ts      slash command definitions, registration, staff handlers
 src/interactions.ts  the interaction router

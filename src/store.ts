@@ -44,6 +44,8 @@ interface BotState {
   downloadsMessageId: string | null; // the single, edited-in-place "Downloads" message
   posts: Record<string, PostRecord>; // named /post messages (editable later)
   announcement: AnnouncementRecord | null; // the latest release announcement, editable in place
+  introMessageId: string | null;     // the posted introduction, edited in place by /intro
+  introChannelId: string | null;
 }
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -60,6 +62,8 @@ function load(): BotState {
         downloadsMessageId: raw.downloadsMessageId || null,
         posts: raw.posts && typeof raw.posts === 'object' ? raw.posts : {},
         announcement: raw.announcement && typeof raw.announcement === 'object' ? raw.announcement : null,
+        introMessageId: raw.introMessageId || null,
+        introChannelId: raw.introChannelId || null,
       };
     }
   } catch (err) {
@@ -67,7 +71,10 @@ function load(): BotState {
     logger.error('state.json unreadable, starting fresh', { err: (err as Error).message });
     try { fs.copyFileSync(FILE, `${FILE}.corrupt-${Date.now()}`); } catch { /* best effort */ }
   }
-  return { lastAnnouncedVersion: '0.0.0', ticketCounter: 0, tickets: {}, downloadsMessageId: null, posts: {}, announcement: null };
+  return {
+    lastAnnouncedVersion: '0.0.0', ticketCounter: 0, tickets: {}, downloadsMessageId: null,
+    posts: {}, announcement: null, introMessageId: null, introChannelId: null,
+  };
 }
 
 class Store {
@@ -93,6 +100,14 @@ class Store {
 
   get announcement(): AnnouncementRecord | null { return this.state.announcement; }
   setAnnouncement(rec: AnnouncementRecord | null): void { this.update((s) => { s.announcement = rec; }); }
+
+  get intro(): { channelId: string; messageId: string } | null {
+    const { introChannelId, introMessageId } = this.state;
+    return introChannelId && introMessageId ? { channelId: introChannelId, messageId: introMessageId } : null;
+  }
+  setIntro(rec: { channelId: string; messageId: string } | null): void {
+    this.update((s) => { s.introChannelId = rec ? rec.channelId : null; s.introMessageId = rec ? rec.messageId : null; });
+  }
 
   getPost(name: string): PostRecord | undefined { return this.state.posts[name]; }
   setPost(name: string, rec: PostRecord): void { this.update((s) => { s.posts[name] = rec; }); }

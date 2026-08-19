@@ -49,14 +49,16 @@ export const config = {
     ticketCategory: req('TICKET_CATEGORY_ID'),
     audit: opt('AUDIT_CHANNEL_ID'),
     ticketLog: opt('TICKET_LOG_CHANNEL_ID'),
+    // Joins and leaves, with the invite each member arrived on. Empty disables the log.
+    memberLog: opt('MEMBER_LOG_CHANNEL_ID'),
   },
   roles: {
     staff: req('STAFF_ROLE_ID'),
+    // Granted to every human who joins. Empty disables the grant. The bot's own role
+    // must sit ABOVE this one in Server Settings, or Discord refuses the assignment.
+    member: opt('MEMBER_ROLE_ID'),
   },
   announceWebhookUrl: opt('ANNOUNCE_WEBHOOK_URL'),
-  // Full-install ZIP: one fixed download link shown in the downloads channel. It stays the same
-  // across releases, so it is set once in .env and used automatically.
-  downloadZipUrl: opt('DOWNLOAD_ZIP_URL'),
   // Source of truth for release announcements: "owner/repo" on GitHub (see releaseApi.ts).
   githubRepo: opt('GITHUB_REPO', 'Santerxyz/SSIM').replace(/^\/+|\/+$/g, ''),
   announceHmacSecret: opt('ANNOUNCE_HMAC_SECRET'),

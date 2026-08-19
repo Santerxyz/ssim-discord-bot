@@ -19,6 +19,11 @@ is posted exactly once, and an older version can never overwrite a newer one. A
 freshly deployed bot records the current release as its baseline instead of
 announcing something everybody has already installed.
 
+**Corrections follow the release.** Fix a typo in the release notes on GitHub and
+the message already posted is edited to match, in place, rather than a correction
+being posted underneath it. GitHub stays the single source of truth, so the two
+cannot drift apart. See [keeping an announcement current](#keeping-an-announcement-current).
+
 **A downloads channel that stays current.** One message, edited in place on every
 release, carrying a link button for the full install and a link button for the
 current version's executable. Members always have one place to look, and old
@@ -171,7 +176,8 @@ pass.
 |---|---|
 | `/panel` | Post the ticket panel in this channel |
 | `/post name:<key> [channel]` | Publish a branded embed, or edit the one already stored under that name |
-| `/announce` | Force a repost of the latest release, ignoring the idempotency check |
+| `/announce` | Edit the latest release announcement to match its current GitHub notes |
+| `/announce repost:true` | Post a fresh announcement instead of editing the existing one |
 | `/close [reason]` | Close the current ticket and issue the transcript |
 | `/add user:<@user>` | Give someone access to the current ticket |
 | `/remove user:<@user>` | Take it away |
@@ -188,8 +194,12 @@ person who opened a ticket may close it themselves.
                                                    |     GitHub Releases API
   every POLL_INTERVAL_MS: poll  -------------------+              |
                                                                   v
-                                        newer than the last announced version?
-                                                post, then record it
+                                            newer than the last announced version?
+                                                   yes: post it, and remember
+                                                        the message
+                                                   no:  do the notes still match
+                                                        the message? if not,
+                                                        edit it in place
 ```
 
 Both paths call the same reconciler, which fetches the latest release itself and
@@ -203,6 +213,36 @@ poll still posts every release within one interval.
 
 `/releases/latest` on the GitHub API excludes drafts and prereleases, so neither
 can trigger a public announcement.
+
+### Keeping an announcement current
+
+Release notes get corrected after publication. When that happens, the message on
+the board should change, not gain a reply saying it was wrong.
+
+The bot stores the message it posted along with the exact body it sent. Every
+reconcile re-renders the release and compares. If the body still matches, nothing
+happens and no API call is made. If it differs, because the notes were edited on
+GitHub, the message is edited in place to match. Nothing is ever posted twice.
+
+So the workflow is: edit the release on GitHub, then either wait for the next poll
+or run `/announce` to apply it immediately. Both do the same thing.
+
+```
+/announce                  edit the posted message to match the current notes
+/announce repost:true      post a new message instead, and track that one
+```
+
+`/announce` reports which happened, including when the announcement already matched
+and nothing needed doing. Use `repost:true` when the original was deleted, or when
+the message predates this feature and is therefore untracked.
+
+Two cases stop the tracking rather than fighting it. If the message was deleted, or
+the webhook it was posted through was removed, the next edit attempt gets `Unknown
+Message` or `Unknown Webhook` from Discord. The bot logs that once, forgets the
+message, and stops retrying every poll. `/announce repost:true` starts a new one.
+
+Only the latest release is tracked. `/releases/latest` is the only thing the bot
+reads, so editing the notes of an older release does not update its announcement.
 
 ### Triggering a push from your publisher
 
@@ -338,8 +378,11 @@ runs from source and reloads on change. The full set of scripts:
 | `npm run typecheck` | `tsc --noEmit` |
 
 The tests cover the pure logic: announcement formatting, semver comparison, HMAC
-verification, and note sanitisation. Nothing in the suite touches Discord or the
-network, so `npm test` runs offline and without a token.
+verification, and note sanitisation. Two of them pin the properties the announcement
+edit relies on, that an unchanged release renders byte-identically and an edited one
+does not, since a body that varied on its own would make the bot edit the message on
+every poll. Nothing in the suite touches Discord or the network, so `npm test` runs
+offline and without a token.
 
 ### Project layout
 

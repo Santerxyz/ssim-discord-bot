@@ -31,3 +31,20 @@ test('formatReleasePost preserves +/- lines verbatim; generic notice without a m
   assert.ok(out.includes('A manual update may be required for this version.'));
   assert.ok(!out.includes('Downloads:'));
 });
+
+// announce.ts decides whether a posted announcement needs editing by re-rendering the
+// release and comparing it to the body it stored. These two properties are what make
+// that comparison mean anything.
+
+test('formatReleasePost is stable for identical input, so a poll does not edit forever', () => {
+  const p = { version: '1.4.0', notes: '+ New: thing', publishedAt: '2026-08-01T09:00:00Z', downloadsMention: '<#7>' };
+  assert.equal(formatReleasePost(p), formatReleasePost({ ...p }));
+});
+
+test('formatReleasePost changes when the notes change, so an edit is detected', () => {
+  const base = { version: '1.4.0', publishedAt: '2026-08-01T09:00:00Z', downloadsMention: '<#7>' };
+  const before = formatReleasePost({ ...base, notes: '+ New: thing' });
+  const after = formatReleasePost({ ...base, notes: '+ New: thing\n- Fixed: typo' });
+  assert.notEqual(before, after);
+  assert.ok(after.includes('- Fixed: typo'));
+});

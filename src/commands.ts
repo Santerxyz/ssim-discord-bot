@@ -28,7 +28,8 @@ export const commands = [
   new SlashCommandBuilder().setName('remove').setDescription('Staff: remove a user from this ticket')
     .addUserOption((o) => o.setName('user').setDescription('User to remove').setRequired(true))
     .setDefaultMemberPermissions(staffPerm),
-  new SlashCommandBuilder().setName('announce').setDescription('Staff: re-post the latest release announcement')
+  new SlashCommandBuilder().setName('announce').setDescription('Staff: update the latest release announcement from its GitHub notes')
+    .addBooleanOption((o) => o.setName('repost').setDescription('Post a new message instead of editing the one already there').setRequired(false))
     .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('panel').setDescription('Staff: post the support/ticket panel here')
     .setDefaultMemberPermissions(staffPerm),
@@ -78,8 +79,12 @@ async function cmdAddRemove(interaction: ChatInputCommandInteraction, add: boole
 
 async function cmdAnnounce(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
-  const r = await announceNow();
-  await interaction.editReply({ content: r.ok ? `📣 Announced v${r.version}.` : `❌ ${r.error}` });
+  const r = await announceNow(interaction.options.getBoolean('repost') ?? false);
+  if (!r.ok) { await interaction.editReply({ content: `❌ ${r.error}` }); return; }
+  const said = r.action === 'posted' ? `📣 Announced v${r.version}.`
+    : r.action === 'edited' ? `📣 Updated the v${r.version} announcement to match the release notes.`
+    : `✅ The v${r.version} announcement already matches the release notes.`;
+  await interaction.editReply({ content: said });
 }
 
 async function cmdPanel(interaction: ChatInputCommandInteraction): Promise<void> {

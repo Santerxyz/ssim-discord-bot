@@ -1,8 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  members.ts: what happens around a member arriving and leaving.
 //
-//  Two jobs. Grant MEMBER_ROLE_ID on join, and write joins and leaves to
-//  MEMBER_LOG_CHANNEL_ID with the invite the member arrived on.
+//  Three jobs. Grant MEMBER_ROLE_ID on join, write joins and leaves to
+//  MEMBER_LOG_CHANNEL_ID with the invite the member arrived on, and backfill the
+//  role onto everyone who was already here before any of this existed.
 //
 //  Discord does not tell you which invite was used. The only way to know is to
 //  keep a count of every invite's uses and see which one moved when somebody
@@ -152,6 +153,76 @@ export async function onMemberAdd(member: GuildMember): Promise<void> {
 
   await ch.send({ embeds: [embed], allowedMentions: { parse: [] } })
     .catch((err) => logger.warn('member join log failed', { err: (err as Error).message }));
+}
+
+// ── Backfill ────────────────────────────────────────────────────────────────────
+// The role is granted on the join event, so nobody who was already in the server
+// when it was switched on has it. Discord has no bulk role assignment, so the only
+// way is one member at a time.
+
+const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export interface BackfillResult {
+  total: number;      // members in the guild
+  granted: number;
+  alreadyHad: number;
+  bots: number;
+  failed: number;
+  firstError?: string;
+}
+
+/**
+ * Give MEMBER_ROLE_ID to every human who does not already have it.
+ *
+ * Safe to re-run: members holding the role are skipped, so a second pass only
+ * picks up whatever the first one missed. A single member failing does not stop
+ * the run, because one bad account should not block the other several hundred.
+ */
+export async function backfillMemberRole(
+  guild: Guild,
+  onProgress?: (done: number, todo: number) => void,
+): Promise<BackfillResult> {
+  const roleId = config.roles.member;
+  if (!roleId) throw new Error('MEMBER_ROLE_ID is not set, so there is no role to grant.');
+
+  const role = await guild.roles.fetch(roleId).catch(() => null);
+  if (!role) throw new Error(`No role with ID ${roleId} exists in this server.`);
+
+  // Check the hierarchy once here rather than discovering it as several hundred
+  // identical failures.
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (me && role.position >= me.roles.highest.position) {
+    throw new Error(`**${role.name}** sits at or above my own highest role, so Discord will not let me grant it. Move my role above it in Server Settings, Roles, then run this again.`);
+  }
+
+  const all = await guild.members.fetch();
+  const result: BackfillResult = { total: all.size, granted: 0, alreadyHad: 0, bots: 0, failed: 0 };
+
+  const todo = all.filter((m) => {
+    if (m.user.bot) { result.bots += 1; return false; }
+    if (m.roles.cache.has(roleId)) { result.alreadyHad += 1; return false; }
+    return true;
+  });
+
+  let done = 0;
+  for (const member of todo.values()) {
+    try {
+      await member.roles.add(roleId, 'member role backfill');
+      result.granted += 1;
+    } catch (err) {
+      result.failed += 1;
+      if (!result.firstError) result.firstError = (err as Error).message;
+      logger.warn('backfill: could not grant the member role', { member: member.user.tag, err: (err as Error).message });
+    }
+    done += 1;
+    onProgress?.(done, todo.size);
+    // discord.js queues around the rate limit on its own. This is politeness on top,
+    // so a few hundred grants do not arrive as one burst.
+    await pause(250);
+  }
+
+  logger.info('member role backfill finished', { ...result });
+  return result;
 }
 
 export async function onMemberRemove(member: GuildMember | PartialGuildMember): Promise<void> {

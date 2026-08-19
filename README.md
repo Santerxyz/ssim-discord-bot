@@ -203,6 +203,7 @@ pass.
 |---|---|
 | `/panel` | Post the ticket panel in this channel |
 | `/intro [channel]` | Post the introduction, or update the one already posted |
+| `/syncmembers` | Give the member role to everyone who does not have it yet |
 | `/post name:<key> [channel]` | Publish a branded embed, or edit the one already stored under that name |
 | `/announce` | Edit the latest release announcement to match its current GitHub notes |
 | `/announce repost:true` | Post a fresh announcement instead of editing the existing one |
@@ -323,9 +324,27 @@ answers rather than bugs:
 The log says which of these it was where it can tell. Everything else about the
 join is still recorded either way.
 
-Joins that happened while the bot was down are not backfilled. Discord does not
-report them after the fact, and the role is granted on the join event, so anyone who
-arrived during an outage needs the role by hand.
+### Backfilling the role
+
+The role is granted on the join event, so switching `MEMBER_ROLE_ID` on does nothing
+for the people already in the server. Discord has no bulk role assignment, and it
+does not report joins that happened while the bot was offline, so both cases need
+the same thing: `/syncmembers`.
+
+It fetches every member, skips bots and anyone who already has the role, and grants
+it to the rest one at a time with a short pause between each. Progress is reported as
+it goes, and the summary at the end gives granted, already had, bots skipped, and
+failed counts.
+
+Two details worth knowing. It checks the role hierarchy once before starting, so a
+role sitting above the bot fails immediately with an explanation rather than as
+several hundred identical errors. And it is safe to re-run: members holding the role
+are skipped, so a second pass only picks up what the first one missed, which is what
+you want after fixing whatever caused a failure.
+
+Budget roughly four seconds per member needing the role. A slash command reply stops
+working after 15 minutes, so on a large server the progress messages stop before the
+run does. The run itself continues, and the final counts go to the bot log.
 
 ## Deploying
 

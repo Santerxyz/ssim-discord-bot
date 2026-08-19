@@ -14,6 +14,7 @@ import { store } from './store';
 import { closeTicket, addUser, removeUser, postPanel } from './tickets';
 import { handlePostCommand } from './post';
 import { postIntro } from './intro';
+import { backfillMemberRole } from './members';
 
 // setDefaultMemberPermissions(ManageMessages) merely de-clutters the picker for non-staff; the real
 // gate is the STAFF_ROLE check in handleCommand (roles ≠ Discord perms).
@@ -36,6 +37,8 @@ export const commands = [
     .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('intro').setDescription('Staff: post the SSIM introduction, or update the one already posted')
     .addChannelOption((o) => o.setName('channel').setDescription('Target channel (default: here)').addChannelTypes(ChannelType.GuildText).setRequired(false))
+    .setDefaultMemberPermissions(staffPerm),
+  new SlashCommandBuilder().setName('syncmembers').setDescription('Staff: give the member role to everyone who does not have it yet')
     .setDefaultMemberPermissions(staffPerm),
   new SlashCommandBuilder().setName('post').setDescription('Staff: post or edit a bot message (embed)')
     .addStringOption((o) => o.setName('name').setDescription('Short key to identify/edit this post later').setRequired(true))
@@ -61,6 +64,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction): P
     case 'announce': return cmdAnnounce(interaction);
     case 'panel': return cmdPanel(interaction);
     case 'intro': return cmdIntro(interaction);
+    case 'syncmembers': return cmdSyncMembers(interaction);
     case 'post': return handlePostCommand(interaction);
     default: await interaction.reply({ ephemeral: true, content: 'Unknown command.' });
   }
@@ -105,6 +109,35 @@ async function cmdIntro(interaction: ChatInputCommandInteraction): Promise<void>
     });
   } catch (err) {
     await interaction.editReply({ content: `❌ ${(err as Error).message}` });
+  }
+}
+
+// A few hundred grants take a few minutes, and an interaction token is only good for
+// 15 of them. Progress is throttled to one edit every 5 seconds, and every reply is
+// best-effort so an expired token cannot abort a run that is otherwise working.
+async function cmdSyncMembers(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) { await interaction.reply({ ephemeral: true, content: 'Run this in the server.' }); return; }
+  await interaction.deferReply({ ephemeral: true });
+
+  const say = (content: string) => interaction.editReply({ content }).catch(() => { /* token expired, the run continues */ });
+  let lastTick = 0;
+
+  try {
+    const r = await backfillMemberRole(interaction.guild, (done, todo) => {
+      const now = Date.now();
+      if (now - lastTick < 5000 && done !== todo) return;
+      lastTick = now;
+      void say(`Granting the member role: ${done} of ${todo}.`);
+    });
+
+    const lines = [
+      `Done. **${r.granted}** member${r.granted === 1 ? '' : 's'} granted the role.`,
+      `${r.alreadyHad} already had it, ${r.bots} bot${r.bots === 1 ? '' : 's'} skipped, ${r.total} in the server.`,
+    ];
+    if (r.failed > 0) lines.push(`\n**${r.failed} failed.** First error: ${r.firstError}`);
+    await say(lines.join('\n'));
+  } catch (err) {
+    await say(`❌ ${(err as Error).message}`);
   }
 }
 

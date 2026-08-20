@@ -47,11 +47,10 @@ transcript that goes to the staff log channel and to the person who opened it.
 Optional inactivity auto-close posts a warning first and gives a two hour grace
 period.
 
-**Donations, handled in private.** A donation topic opens a ticket and asks how:
-PayPal, or crypto narrowed down by coin and then by network. PayPal is a link. For
-crypto the bot states the answer back and pings staff to post the address by hand,
-because it deliberately stores no address of its own. See
-[donations](#donations).
+**Donations, handled in private.** A donation topic opens a ticket and asks how.
+PayPal is a link. Crypto is a short form where the donor types the coin and the
+network, after which staff are pinged to post the address by hand, because the bot
+deliberately stores no address of its own. See [donations](#donations).
 
 **Staff posts.** `/post` publishes a branded embed under a short name, and
 running `/post` with the same name again reopens the editor prefilled and edits
@@ -309,21 +308,21 @@ PayPal is a link, so it comes from the environment:
 DONATE_PAYPAL_URL=https://paypal.me/yourname
 ```
 
-Which coins are offered is the `CRYPTO` list in
-[`src/donations.ts`](src/donations.ts). It holds coin names and network names and
-nothing else. Edit it to match what you actually accept.
+Crypto needs no configuration at all.
 
 ### What a donor sees
 
-First the choice of method. PayPal shows the conditions and a button that opens the
-link. Crypto asks which coin, then which network, and a coin with only one network
-skips the second question rather than asking one with a single answer.
+First the choice of method. PayPal shows the two conditions, send as Friends and
+Family and send in EUR, above a button that opens the link.
 
-The last screen states the answer back and says the address is coming. At that
-point staff are pinged in the ticket with the coin and network, and somebody posts
-the address by hand.
+Crypto opens a short form with two fields: which coin, and which network. Both are
+typed rather than picked from a list, so any coin can be named and there is no
+catalog to keep in step with what you actually accept.
 
-Opening the ticket pings nobody. The ping fires once a donor has actually chosen, so
+The answers are read back on the next screen, and staff are pinged in the ticket
+with the coin and the network. Somebody then posts the address by hand.
+
+Opening the ticket pings nobody. The ping fires once a donor has answered, so
 reading the options and leaving does not page anyone.
 
 ### Why no address is stored
@@ -341,8 +340,16 @@ counts, and that a direct message offering one should be ignored. A donation flo
 a phishing target: somebody watches for a donor waiting on an address and gets there
 first. That warning is asserted by a test, so it cannot be edited away by accident.
 
-Buttons carry the coin and network, never a position in the list, so reordering the
-catalog cannot repoint a button already sitting in an open ticket.
+### The answers are untrusted text
+
+The coin and the network are typed by the donor and land in a message that mentions
+the staff role. Two separate things stop that being useful to an attacker.
+
+The mention list on that message is stated explicitly, never derived from its text,
+so nothing typed into the form can ping anyone. On top of that the answers are
+stripped of mentions, markdown and angle brackets, collapsed, and capped, so they
+cannot break the message they land in or sit in the channel looking like a mention.
+An answer that is empty once stripped is refused, and staff are not paged for it.
 
 ## Members
 
@@ -559,9 +566,8 @@ The panel adapts to how many there are: up to five topics become one button each
 and beyond five they will not fit on a row so they fall back to a select menu.
 Either way the next click opens the ticket.
 
-A topic can set `style` for its button colour, `staffPing` to decide whether
-opening it pages staff, `donationPanel` to post the payment methods into the new
-ticket, and `needsDonations` to hide itself while no methods are configured.
+A topic can set `style` for its button colour, `staffPing` to decide whether opening
+it pages staff, and `donationPanel` to post the payment methods into the new ticket.
 
 Keep the `id` of an existing topic stable, because it is embedded in the
 interaction custom IDs of panels already posted. Changing a `label` or a

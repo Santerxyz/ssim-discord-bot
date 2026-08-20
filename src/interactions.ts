@@ -14,7 +14,7 @@ import { memberHasStaff } from './perms';
 import { handleCommand } from './commands';
 import { categoryById, createTicket, claimTicket, closeTicket } from './tickets';
 import { handlePostModal } from './post';
-import { handleDonationButton } from './donations';
+import { handleDonationButton, handleDonationModal } from './donations';
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
   try {
@@ -83,5 +83,6 @@ async function onCloseButton(interaction: ButtonInteraction): Promise<void> {
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 async function onModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (await handleDonationModal(interaction)) return;
   if (interaction.customId.startsWith('post:submit:')) return handlePostModal(interaction);
 }

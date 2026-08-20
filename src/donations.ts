@@ -8,39 +8,24 @@
 //  to get it back. A human posting it into a private ticket keeps a person in the
 //  loop at the one moment where being wrong is unrecoverable.
 //
+//  The coin and network are typed by the donor rather than picked from a list, so
+//  nothing has to be kept in step with what is actually accepted. That makes them
+//  untrusted text on its way into a message that mentions a role, which is what
+//  sanitizeAnswer and the allowedMentions below are for.
+//
 //  PayPal is different. It is a link, not an address, and a wrong link is visible
 //  the moment the page loads, so it comes from the environment.
 //
-//  process.env is read directly rather than through config.ts so the view builders
+//  process.env is read directly rather than through config.ts so the pure parts
 //  stay importable in tests without a full environment.
 // ════════════════════════════════════════════════════════════════════════════
 import {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, ButtonInteraction,
+  ModalBuilder, ModalSubmitInteraction, TextInputBuilder, TextInputStyle,
   MessageActionRowComponentBuilder,
 } from 'discord.js';
 import { logger } from './logger';
 import { BRAND } from './util';
-
-/**
- * What can be donated, and on which networks.
- *
- * Edit this to match what you actually accept. Nothing here is secret and nothing
- * here is an address: it is only the set of questions the donor is asked. A coin
- * with one network never shows a network question.
- */
-export interface CryptoAsset {
-  asset: string;
-  networks: string[];
-}
-
-export const CRYPTO: CryptoAsset[] = [
-  { asset: 'BTC', networks: ['Bitcoin'] },
-  { asset: 'ETH', networks: ['Ethereum (ERC20)', 'Arbitrum One', 'Base'] },
-  { asset: 'USDT', networks: ['Tron (TRC20)', 'Ethereum (ERC20)', 'BNB Smart Chain (BEP20)', 'Solana'] },
-  { asset: 'USDC', networks: ['Ethereum (ERC20)', 'Solana', 'Base', 'Polygon'] },
-  { asset: 'LTC', networks: ['Litecoin'] },
-  { asset: 'SOL', networks: ['Solana'] },
-];
 
 const paypalUrl = () => {
   const v = (process.env.DONATE_PAYPAL_URL || '').trim();
@@ -53,20 +38,22 @@ const paypalUrl = () => {
   return v;
 };
 
-export const donationsConfigured = () => Boolean(paypalUrl()) || CRYPTO.length > 0;
-
-// 40 keeps a customId at 8 + 40 + 1 + 40 = 89, inside Discord's limit of 100, and
-// is long enough that two real network names cannot collide by truncation.
-const key = (s: string, max = 40) => s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, max);
-
-export const findAsset = (assetKey: string): CryptoAsset | undefined =>
-  CRYPTO.find((c) => key(c.asset) === assetKey);
-
-export const findNetwork = (assetKey: string, networkKey: string): string | undefined =>
-  findAsset(assetKey)?.networks.find((n) => key(n) === networkKey);
-
-/** Exported so a test can hold it to Discord's 100 character customId limit. */
-export const networkCustomId = (asset: string, network: string) => `don:net:${key(asset)}:${key(network)}`;
+/**
+ * Make a typed answer safe to put in a message that also mentions the staff role.
+ *
+ * allowedMentions is the real guard against a ping, and it is set on every send
+ * below. This exists so the text cannot break the surrounding formatting either,
+ * and so a leftover mention does not sit in the channel looking like one.
+ */
+export function sanitizeAnswer(input: string, max = 40): string {
+  return String(input ?? '')
+    .replace(/<@[!&]?\d+>|<#\d+>/g, '')     // raw user, role and channel mentions
+    .replace(/@(everyone|here)/gi, '')      // mass mentions
+    .replace(/[`*_~|\\<>]/g, '')            // markdown and tag characters
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
 
 type View = { embeds: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] };
 
@@ -89,11 +76,7 @@ export function methodView(): View {
 
   const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
   if (paypalUrl()) row.addComponents(new ButtonBuilder().setCustomId('don:paypal').setLabel('PayPal').setStyle(ButtonStyle.Primary));
-  if (CRYPTO.length) row.addComponents(new ButtonBuilder().setCustomId('don:coins').setLabel('Crypto').setStyle(ButtonStyle.Primary));
-
-  if (!row.components.length) {
-    return { embeds: [embed.setDescription('Donation methods are not set up yet. Staff will follow up here.')], components: [] };
-  }
+  row.addComponents(new ButtonBuilder().setCustomId('don:crypto').setLabel('Crypto').setStyle(ButtonStyle.Primary));
   return { embeds: [embed], components: [row] };
 }
 
@@ -114,61 +97,38 @@ function paypalView(): View {
   return { embeds: [embed], components: [backRow(open)] };
 }
 
-function coinsView(): View {
-  const embed = new EmbedBuilder()
-    .setColor(BRAND)
-    .setTitle('Crypto')
-    .setDescription('Which coin would you like to send?');
-
-  const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
-  // Five to a row, four rows at most, because the fifth row carries Back.
-  for (let i = 0; i < Math.min(CRYPTO.length, 20); i += 5) {
-    const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
-    for (const c of CRYPTO.slice(i, i + 5)) {
-      row.addComponents(new ButtonBuilder().setCustomId(`don:asset:${key(c.asset)}`).setLabel(c.asset).setStyle(ButtonStyle.Secondary));
-    }
-    rows.push(row);
-  }
-  rows.push(backRow());
-  return { embeds: [embed], components: rows };
-}
-
-function networkView(assetKey: string): View {
-  const entry = findAsset(assetKey);
-  if (!entry) return coinsView();
-  // One network is not a question, so skip straight to the request.
-  if (entry.networks.length === 1) return requestView(entry.asset, entry.networks[0]);
-
-  const embed = new EmbedBuilder()
-    .setColor(BRAND)
-    .setTitle(`${entry.asset}: which network?`)
-    .setDescription(
-      `**${entry.asset}** exists on more than one network and they are not interchangeable.\n\n` +
-      'Pick the one you will actually send from. Sending over the wrong network loses the funds permanently, so choose the one your wallet shows.',
+/** The two questions, asked as a form rather than a list of buttons, so any coin
+ *  and any network can be named without the bot keeping a catalog in step. */
+export function cryptoModal(): ModalBuilder {
+  const row = (input: TextInputBuilder) => new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+  return new ModalBuilder()
+    .setCustomId('don:crypto:modal')
+    .setTitle('Crypto donation')
+    .addComponents(
+      row(new TextInputBuilder()
+        .setCustomId('coin').setLabel('Which coin do you want to send?')
+        .setPlaceholder('BTC, ETH, USDT, LTC, SOL, XMR ...')
+        .setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(20)),
+      row(new TextInputBuilder()
+        .setCustomId('network').setLabel('On which network?')
+        .setPlaceholder('Bitcoin, Tron (TRC20), Ethereum (ERC20) ...')
+        .setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(40)),
     );
-
-  const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
-  for (const n of entry.networks.slice(0, 5)) {
-    row.addComponents(
-      new ButtonBuilder().setCustomId(networkCustomId(entry.asset, n)).setLabel(n.slice(0, 80)).setStyle(ButtonStyle.Secondary),
-    );
-  }
-  const back = new ButtonBuilder().setCustomId('don:coins').setLabel('Back to coins').setStyle(ButtonStyle.Secondary);
-  return { embeds: [embed], components: [row, backRow(back)] };
 }
 
 /** The end of the flow. The answer is stated back, and staff send the address. */
-export function requestView(asset: string, network: string): View {
+export function requestView(coin: string, network: string): View {
   const embed = new EmbedBuilder()
     .setColor(BRAND)
     .setTitle('Noted')
     .setDescription(
-      `**${asset}** on **${network}**.\n\n` +
+      `**${coin}** on **${network}**.\n\n` +
       'A member of the team will post the address here shortly. Nothing is sent automatically, so wait for it to appear in this ticket.\n\n' +
+      'If either of those is wrong, say so here before you send anything.\n\n' +
       'Never send to an address that reached you any other way, including a direct message. Only what is posted in this channel counts.',
     );
-  const back = new ButtonBuilder().setCustomId('don:coins').setLabel('Pick a different coin').setStyle(ButtonStyle.Secondary);
-  return { embeds: [embed], components: [backRow(back)] };
+  const again = new ButtonBuilder().setCustomId('don:crypto').setLabel('Change the answers').setStyle(ButtonStyle.Secondary);
+  return { embeds: [embed], components: [backRow(again)] };
 }
 
 /** Posted into a donation ticket when it opens. */
@@ -176,52 +136,58 @@ export async function sendDonationPanel(channel: TextChannel): Promise<void> {
   await channel.send(methodView()).catch((err) => logger.warn('donation panel post failed', { err: (err as Error).message }));
 }
 
-/**
- * Routes every `don:` button. Returns false when the id is not ours.
- *
- * The staff ping happens here rather than when the ticket opens, so nobody is
- * paged because a member looked at the options and left.
- */
+/** Routes every `don:` button. Returns false when the id is not ours. */
 export async function handleDonationButton(interaction: ButtonInteraction): Promise<boolean> {
   const id = interaction.customId;
   if (!id.startsWith('don:')) return false;
 
   if (id === 'don:home') { await interaction.update(methodView()); return true; }
   if (id === 'don:paypal') { await interaction.update(paypalView()); return true; }
-  if (id === 'don:coins') { await interaction.update(coinsView()); return true; }
-
-  if (id.startsWith('don:asset:')) {
-    const assetKey = id.slice('don:asset:'.length);
-    const entry = findAsset(assetKey);
-    await interaction.update(networkView(assetKey));
-    // A single-network coin resolves straight to a request, so it needs the ping too.
-    if (entry && entry.networks.length === 1) await pingStaff(interaction, entry.asset, entry.networks[0]);
-    return true;
-  }
-
-  if (id.startsWith('don:net:')) {
-    const [assetKey, networkKey] = id.slice('don:net:'.length).split(':');
-    const entry = findAsset(assetKey || '');
-    const network = findNetwork(assetKey || '', networkKey || '');
-    // An unknown pair means the catalog changed under a live button. Showing the
-    // coin list again is the right answer, never a guess at what was meant.
-    if (!entry || !network) { await interaction.update(coinsView()); return true; }
-    await interaction.update(requestView(entry.asset, network));
-    await pingStaff(interaction, entry.asset, network);
-    return true;
-  }
-
+  // showModal is the reply to this interaction, so nothing else may answer it.
+  if (id === 'don:crypto') { await interaction.showModal(cryptoModal()); return true; }
   return false;
 }
 
-async function pingStaff(interaction: ButtonInteraction, asset: string, network: string): Promise<void> {
+/** Routes the crypto form. Returns false when the id is not ours. */
+export async function handleDonationModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  if (interaction.customId !== 'don:crypto:modal') return false;
+
+  const coin = sanitizeAnswer(interaction.fields.getTextInputValue('coin'), 20);
+  const network = sanitizeAnswer(interaction.fields.getTextInputValue('network'), 40);
+
+  // Discord enforces "required", but an answer made only of stripped characters
+  // still arrives empty, and staff should not be paged for a blank request.
+  if (!coin || !network) {
+    await interaction.reply({
+      ephemeral: true,
+      content: 'That came through empty. Press **Crypto** again and type the coin and the network as plain text.',
+    });
+    return true;
+  }
+
+  const view = requestView(coin, network);
+  // Modals opened from a button can edit that button's message. Opened any other
+  // way they cannot, so fall back to a normal reply.
+  if (interaction.isFromMessage()) await interaction.update(view);
+  else await interaction.reply(view);
+
+  await pingStaff(interaction, coin, network);
+  return true;
+}
+
+/**
+ * Page staff once a donor has actually answered. Not when the ticket opens, so
+ * reading the options and leaving pages nobody.
+ */
+async function pingStaff(interaction: ButtonInteraction | ModalSubmitInteraction, coin: string, network: string): Promise<void> {
   const staff = (process.env.STAFF_ROLE_ID || '').trim();
   const channel = interaction.channel as TextChannel | null;
-  if (!channel || !channel.isTextBased?.()) return;
+  if (!channel || typeof channel.send !== 'function') return;
 
-  const mention = staff ? `<@&${staff}> ` : '';
   await channel.send({
-    content: `${mention}<@${interaction.user.id}> would like to donate **${asset}** on **${network}**. Please post the receiving address here.`,
+    content: `${staff ? `<@&${staff}> ` : ''}<@${interaction.user.id}> would like to donate **${coin}** on **${network}**. Please post the receiving address here.`,
+    // The coin and network are typed by the donor, so the mention list is stated
+    // explicitly and never derived from the message text.
     allowedMentions: { roles: staff ? [staff] : [], users: [interaction.user.id] },
   }).catch((err) => logger.warn('donation staff ping failed', { err: (err as Error).message }));
 }

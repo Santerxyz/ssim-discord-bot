@@ -25,7 +25,6 @@ export interface TicketCategory {
   staffPing: boolean;  // ping STAFF_ROLE_ID on open
   style?: 'primary' | 'secondary' | 'success';  // panel button colour
   donationPanel?: boolean;  // also post the donation methods when the ticket opens
-  needsDonations?: boolean; // hide from the panel unless donation methods are configured
 }
 
 // Add, remove, or rename here (keep `id` stable). No code change needed: one entry
@@ -46,7 +45,6 @@ export const TICKET_CATEGORIES: TicketCategory[] = [
     // Nobody needs paging because somebody opened the donation options.
     staffPing: false,
     donationPanel: true,
-    needsDonations: true,
   },
 ];
 

@@ -13,7 +13,7 @@ import { store, Ticket } from './store';
 import { logger } from './logger';
 import { BRAND } from './util';
 import { audit } from './audit';
-import { donationsConfigured, sendDonationPanel } from './donations';
+import { sendDonationPanel } from './donations';
 
 export function categoryById(id: string): TicketCategory | undefined {
   return TICKET_CATEGORIES.find((c) => c.id === id);
@@ -23,13 +23,6 @@ const pad4 = (n: number) => String(n).padStart(4, '0');
 const cleanName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'user';
 
 // ── The persistent panel ──────────────────────────────────────────────────────
-// Topics a member can actually act on right now. A topic that depends on donation
-// methods is hidden until some exist, because a button that leads to "not set up
-// yet" is worse than no button.
-export function visibleCategories(): TicketCategory[] {
-  return TICKET_CATEGORIES.filter((c) => !c.needsDonations || donationsConfigured());
-}
-
 const STYLES = {
   primary: ButtonStyle.Primary,
   secondary: ButtonStyle.Secondary,
@@ -42,7 +35,7 @@ const STYLES = {
 // confirmation, because the panel already names every topic and createTicket()
 // returns the existing channel on a second press.
 export function buildPanel(): { embeds: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] } {
-  const cats = visibleCategories();
+  const cats = TICKET_CATEGORIES;
   const only = cats.length === 1 ? cats[0] : undefined;
 
   const embed = new EmbedBuilder()

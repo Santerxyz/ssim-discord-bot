@@ -11,7 +11,7 @@ thing standing between the internet and your announcements channel. Both live in
 
 Use **GitHub Private Vulnerability Reporting** on this repository: the *Security*
 tab, then *Report a vulnerability*. If you would rather make contact first, DM
-the maintainer (`Santer.xyz`) on [Discord](https://discord.gg/rnDWYtkbxN) and say
+the maintainer (`Santer.xyz`) on [Discord](https://discord.gg/SBCTVqKTVc) and say
 only that you have a security report, with no details in the first message.
 
 Useful to include: what the issue is, how to reproduce it, what an attacker gets

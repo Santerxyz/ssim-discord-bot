@@ -47,12 +47,11 @@ transcript that goes to the staff log channel and to the person who opened it.
 Optional inactivity auto-close posts a warning first and gives a two hour grace
 period.
 
-**Donations, handled in private.** A donation topic opens a ticket carrying the
-payment methods: PayPal, or crypto narrowed down by coin and then by network. Each
-address appears in a copyable block with the network stated plainly, because
-sending the right coin over the wrong chain loses it. Addresses are read from a
-local file that is never committed, and the topic hides itself entirely until you
-have configured one. See [donations](#donations).
+**Donations, handled in private.** A donation topic opens a ticket and asks how:
+PayPal, or crypto narrowed down by coin and then by network. PayPal is a link. For
+crypto the bot states the answer back and pings staff to post the address by hand,
+because it deliberately stores no address of its own. See
+[donations](#donations).
 
 **Staff posts.** `/post` publishes a branded embed under a short name, and
 running `/post` with the same name again reopens the editor prefilled and edits
@@ -173,6 +172,7 @@ source of truth; the tables below are the summary.
 | `TICKET_LOG_CHANNEL_ID` | none | Receives transcripts on close |
 | `MEMBER_LOG_CHANNEL_ID` | none | Receives a line for every join and leave |
 | `MEMBER_ROLE_ID` | none | Granted to every person who joins. Bots are skipped |
+| `DONATE_PAYPAL_URL` | none | PayPal link behind the PayPal button. Must be https |
 | `ANNOUNCE_WEBHOOK_URL` | none | Preferred way to post announcements |
 | `GITHUB_REPO` | `Santerxyz/SSIM` | The `owner/repo` the release watcher reads |
 | `ANNOUNCE_HMAC_SECRET` | none | Shared secret for push-triggered announcements. Unset disables the endpoint |
@@ -300,58 +300,49 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Donations
 
-The donation topic is off until you configure it. Copy the example and fill it in:
+The donation topic asks two questions and then hands over to a human. **The bot
+never stores a crypto address.**
 
-```bash
-cp donations.example.json data/donations.json
+PayPal is a link, so it comes from the environment:
+
+```
+DONATE_PAYPAL_URL=https://paypal.me/yourname
 ```
 
-```json
-{
-  "paypal": "https://paypal.me/yourname",
-  "crypto": [
-    { "asset": "BTC",  "network": "Bitcoin",          "address": "bc1..." },
-    { "asset": "USDT", "network": "Tron (TRC20)",     "address": "T..."   },
-    { "asset": "USDT", "network": "Ethereum (ERC20)", "address": "0x..."  }
-  ]
-}
-```
-
-Restart the bot, then run `/panel` again so the panel picks up the new topic.
-
-`data/` is gitignored, so your addresses stay on your machine. Drop any method you
-do not offer. Delete the file and the donation topic disappears from the panel
-rather than becoming a button that leads nowhere. `memo` is optional and only
-applies to chains that need a memo or destination tag, such as XRP or XLM.
-
-Write the `network` string the way the donor's wallet writes it, because that is
-the string they have to match.
+Which coins are offered is the `CRYPTO` list in
+[`src/donations.ts`](src/donations.ts). It holds coin names and network names and
+nothing else. Edit it to match what you actually accept.
 
 ### What a donor sees
 
-The topic opens a private ticket with the methods in it. Crypto narrows down in two
-steps, coin and then network, and a coin with only one network skips the second step
-rather than asking a question with one answer. The address arrives in a code block,
-which is what makes it copyable on mobile, under a line naming the exact coin and
-network it accepts.
+First the choice of method. PayPal shows the conditions and a button that opens the
+link. Crypto asks which coin, then which network, and a coin with only one network
+skips the second question rather than asking one with a single answer.
 
-Nothing about this pages staff. `staffPing` is off for the topic, since somebody
-reading payment options is not an event anyone needs to be pulled into.
+The last screen states the answer back and says the address is coming. At that
+point staff are pinged in the ticket with the coin and network, and somebody posts
+the address by hand.
 
-### Why the addresses live in a file
+Opening the ticket pings nobody. The ping fires once a donor has actually chosen, so
+reading the options and leaving does not page anyone.
 
-Addresses are read from `data/donations.json` and from nowhere else. They cannot be
-set by a command, a message, or anything else reaching the bot over the network.
+### Why no address is stored
 
-This is the one part of the bot where a bug costs somebody real money, and a wrong
-address fails silently: the donor sees a successful send and the funds are simply
-gone. So the buttons carry the coin and network, never a position in the list. Edit
-the file, reorder it, add coins, and a button posted last week still resolves to the
-same address. Renaming a coin or a network breaks old buttons instead, and a broken
-button shows the coin list again. That is the safe direction to fail.
+This is the one part of the bot where being wrong costs somebody money and does it
+silently. A donor who sends to the wrong address sees a successful transaction, and
+there is nothing to undo.
 
-Two entries with the same coin and network are indistinguishable to a button, so the
-second is dropped with a warning at startup rather than shadowing the first.
+An address held in a config file, a database, or a message is an address that can be
+changed. Keeping a person in the loop at the moment of handover means a wrong address
+takes a compromised staff account, not a stray edit or a bad deploy.
+
+The closing message also warns the donor that only an address posted in that channel
+counts, and that a direct message offering one should be ignored. A donation flow is
+a phishing target: somebody watches for a donor waiting on an address and gets there
+first. That warning is asserted by a test, so it cannot be edited away by accident.
+
+Buttons carry the coin and network, never a position in the list, so reordering the
+catalog cannot repoint a button already sitting in an open ticket.
 
 ## Members
 

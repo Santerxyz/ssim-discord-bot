@@ -1,112 +1,74 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  donations.ts: the donation methods shown inside a donation ticket.
+//  donations.ts: the donation methods offered inside a donation ticket.
 //
-//  Addresses are read from a local JSON file and from nowhere else. They are
-//  never taken from a message, a command argument, or anything a user can
-//  influence. A donation address is the one thing here worth attacking: swap it
-//  and the money goes to somebody else, silently, with no way to get it back.
-//  Keeping the only source of truth on the operator's own disk is what stops
-//  that, so do not add a path that lets one be supplied at runtime.
+//  The bot never holds a crypto address. It asks which coin and which network,
+//  states the answer back, and pings staff to send the address by hand. That is
+//  deliberate: an address stored in a config file, a database or a message is an
+//  address that can be swapped, and a donor who sends to the wrong one has no way
+//  to get it back. A human posting it into a private ticket keeps a person in the
+//  loop at the one moment where being wrong is unrecoverable.
 //
-//  The file lives under DATA_DIR, which is gitignored, so nobody publishes their
-//  own wallet addresses by pushing the repo. donations.example.json shows the
-//  shape.
+//  PayPal is different. It is a link, not an address, and a wrong link is visible
+//  the moment the page loads, so it comes from the environment.
+//
+//  process.env is read directly rather than through config.ts so the view builders
+//  stay importable in tests without a full environment.
 // ════════════════════════════════════════════════════════════════════════════
-import fs from 'node:fs';
-import path from 'node:path';
 import {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel, ButtonInteraction,
   MessageActionRowComponentBuilder,
 } from 'discord.js';
-import { DATA_DIR } from './store';
 import { logger } from './logger';
 import { BRAND } from './util';
 
-export interface CryptoOption {
-  asset: string;    // "USDT"
-  network: string;  // "Tron (TRC20)"
-  address: string;
-  memo?: string;    // some chains reject a deposit without a memo or tag
-}
-
-interface DonationConfig {
-  paypal: string;
-  crypto: CryptoOption[];
-}
-
-const FILE = process.env.DONATIONS_FILE || path.join(DATA_DIR, 'donations.json');
-
-let cfg: DonationConfig = { paypal: '', crypto: [] };
-
 /**
- * A stable identifier for a customId.
+ * What can be donated, and on which networks.
  *
- * Buttons are addressed by asset and network, never by position in the array. A
- * message posted today has to still resolve to the same address after the file is
- * edited and the bot restarts, and an index would quietly point at whatever moved
- * into that slot. Renaming an asset or a network in the file breaks old buttons
- * instead, which is the safe direction to fail: the donor sees the coin list again
- * rather than somebody else's address.
+ * Edit this to match what you actually accept. Nothing here is secret and nothing
+ * here is an address: it is only the set of questions the donor is asked. A coin
+ * with one network never shows a network question.
  */
-// 40 leaves a customId of at most 9 + 40 + 1 + 40 = 90, inside Discord's limit of
-// 100, and is long enough that two real network names cannot collide by truncation.
+export interface CryptoAsset {
+  asset: string;
+  networks: string[];
+}
+
+export const CRYPTO: CryptoAsset[] = [
+  { asset: 'BTC', networks: ['Bitcoin'] },
+  { asset: 'ETH', networks: ['Ethereum (ERC20)', 'Arbitrum One', 'Base'] },
+  { asset: 'USDT', networks: ['Tron (TRC20)', 'Ethereum (ERC20)', 'BNB Smart Chain (BEP20)', 'Solana'] },
+  { asset: 'USDC', networks: ['Ethereum (ERC20)', 'Solana', 'Base', 'Polygon'] },
+  { asset: 'LTC', networks: ['Litecoin'] },
+  { asset: 'SOL', networks: ['Solana'] },
+];
+
+const paypalUrl = () => {
+  const v = (process.env.DONATE_PAYPAL_URL || '').trim();
+  // A link is the one thing a donor follows without reading, so refuse anything
+  // that is not plainly an https URL.
+  if (v && !/^https:\/\//i.test(v)) {
+    logger.warn('DONATE_PAYPAL_URL is not an https URL, ignoring it');
+    return '';
+  }
+  return v;
+};
+
+export const donationsConfigured = () => Boolean(paypalUrl()) || CRYPTO.length > 0;
+
+// 40 keeps a customId at 8 + 40 + 1 + 40 = 89, inside Discord's limit of 100, and
+// is long enough that two real network names cannot collide by truncation.
 const key = (s: string, max = 40) => s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, max);
 
-/** The entry a `don:addr:<asset>:<network>` button points at, or undefined. */
-export function findCrypto(assetKey: string, networkKey: string): CryptoOption | undefined {
-  return cfg.crypto.find((c) => key(c.asset) === assetKey && key(c.network) === networkKey);
-}
+export const findAsset = (assetKey: string): CryptoAsset | undefined =>
+  CRYPTO.find((c) => key(c.asset) === assetKey);
+
+export const findNetwork = (assetKey: string, networkKey: string): string | undefined =>
+  findAsset(assetKey)?.networks.find((n) => key(n) === networkKey);
 
 /** Exported so a test can hold it to Discord's 100 character customId limit. */
-export const addressCustomId = (asset: string, network: string) => `don:addr:${key(asset)}:${key(network)}`;
+export const networkCustomId = (asset: string, network: string) => `don:net:${key(asset)}:${key(network)}`;
 
-const idFor = (o: CryptoOption) => addressCustomId(o.asset, o.network);
-
-/** Read the file. Anything malformed is dropped with a warning rather than
- *  crashing the bot or, worse, showing half an address. */
-export function loadDonations(): void {
-  cfg = { paypal: '', crypto: [] };
-  if (!fs.existsSync(FILE)) {
-    logger.info(`no donations file at ${FILE}, the donation topic stays hidden`);
-    return;
-  }
-  try {
-    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    const paypal = typeof raw.paypal === 'string' ? raw.paypal.trim() : '';
-    if (paypal && !/^https:\/\//i.test(paypal)) {
-      logger.warn('donations: paypal must be an https URL, ignoring it');
-    } else {
-      cfg.paypal = paypal;
-    }
-    if (Array.isArray(raw.crypto)) {
-      for (const e of raw.crypto) {
-        const asset = typeof e?.asset === 'string' ? e.asset.trim() : '';
-        const network = typeof e?.network === 'string' ? e.network.trim() : '';
-        const address = typeof e?.address === 'string' ? e.address.trim() : '';
-        if (!asset || !network || !address) { logger.warn('donations: skipping an entry missing asset, network or address'); continue; }
-        const memo = typeof e?.memo === 'string' && e.memo.trim() ? e.memo.trim() : undefined;
-        // Two entries sharing an asset and network would be indistinguishable to a
-        // button, so the second is dropped rather than silently shadowed.
-        if (findCrypto(key(asset), key(network))) {
-          logger.warn(`donations: ${asset} on ${network} is listed twice, keeping the first`);
-          continue;
-        }
-        cfg.crypto.push({ asset, network, address, memo });
-      }
-    }
-    logger.info(`donations loaded: ${cfg.paypal ? 'paypal, ' : ''}${cfg.crypto.length} crypto option(s)`);
-  } catch (err) {
-    logger.error('donations file unreadable, donations stay disabled', { err: (err as Error).message });
-    cfg = { paypal: '', crypto: [] };
-  }
-}
-
-export function donationsConfigured(): boolean {
-  return Boolean(cfg.paypal) || cfg.crypto.length > 0;
-}
-
-const assets = () => [...new Set(cfg.crypto.map((c) => c.asset))];
-const networksFor = (asset: string) => cfg.crypto.filter((c) => key(c.asset) === key(asset));
+type View = { embeds: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] };
 
 const backRow = (...extra: ButtonBuilder[]) =>
   new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -114,9 +76,7 @@ const backRow = (...extra: ButtonBuilder[]) =>
     new ButtonBuilder().setCustomId('don:home').setLabel('Back').setStyle(ButtonStyle.Secondary),
   );
 
-type View = { embeds: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] };
-
-/** The first screen: pick a method. */
+/** Step one: PayPal or crypto. */
 export function methodView(): View {
   const embed = new EmbedBuilder()
     .setColor(BRAND)
@@ -124,11 +84,13 @@ export function methodView(): View {
     .setDescription(
       'Thank you for considering it.\n\n' +
       'Donations are never required and no feature is locked behind them. They cover the running costs and nothing more.\n\n' +
-      'Pick a method below and the details appear here.',
+      'How would you like to send it?',
     );
+
   const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
-  if (cfg.paypal) row.addComponents(new ButtonBuilder().setCustomId('don:paypal').setLabel('PayPal').setStyle(ButtonStyle.Primary));
-  if (cfg.crypto.length) row.addComponents(new ButtonBuilder().setCustomId('don:coins').setLabel('Crypto').setStyle(ButtonStyle.Primary));
+  if (paypalUrl()) row.addComponents(new ButtonBuilder().setCustomId('don:paypal').setLabel('PayPal').setStyle(ButtonStyle.Primary));
+  if (CRYPTO.length) row.addComponents(new ButtonBuilder().setCustomId('don:coins').setLabel('Crypto').setStyle(ButtonStyle.Primary));
+
   if (!row.components.length) {
     return { embeds: [embed.setDescription('Donation methods are not set up yet. Staff will follow up here.')], components: [] };
   }
@@ -136,30 +98,34 @@ export function methodView(): View {
 }
 
 function paypalView(): View {
+  const url = paypalUrl();
+  if (!url) return methodView();
+
   const embed = new EmbedBuilder()
     .setColor(BRAND)
     .setTitle('PayPal')
     .setDescription(
-      'Use the button below.\n\n' +
-      'If PayPal offers the choice, sending as **Friends and Family** avoids the fee. Only do that if you are comfortable with it, since it gives up buyer protection, and there is nothing to protect here anyway: this is a donation, not a purchase.',
+      'Two things, and they both matter:\n\n' +
+      '**Send as Friends and Family.**\n' +
+      '**Send in EUR.**\n\n' +
+      'Anything sent as Goods and Services, or in another currency, will be refunded.',
     );
-  const link = new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open PayPal').setURL(cfg.paypal);
-  return { embeds: [embed], components: [backRow(link)] };
+  const open = new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open PayPal').setURL(url);
+  return { embeds: [embed], components: [backRow(open)] };
 }
 
 function coinsView(): View {
-  const list = assets();
   const embed = new EmbedBuilder()
     .setColor(BRAND)
     .setTitle('Crypto')
-    .setDescription(list.length ? 'Pick the coin you want to send.' : 'No crypto options are configured.');
+    .setDescription('Which coin would you like to send?');
 
   const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
-  // Five buttons to a row, four rows at most, because the fifth row is the Back button.
-  for (let i = 0; i < Math.min(list.length, 20); i += 5) {
+  // Five to a row, four rows at most, because the fifth row carries Back.
+  for (let i = 0; i < Math.min(CRYPTO.length, 20); i += 5) {
     const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
-    for (const asset of list.slice(i, i + 5)) {
-      row.addComponents(new ButtonBuilder().setCustomId(`don:asset:${key(asset)}`).setLabel(asset).setStyle(ButtonStyle.Secondary));
+    for (const c of CRYPTO.slice(i, i + 5)) {
+      row.addComponents(new ButtonBuilder().setCustomId(`don:asset:${key(c.asset)}`).setLabel(c.asset).setStyle(ButtonStyle.Secondary));
     }
     rows.push(row);
   }
@@ -167,50 +133,41 @@ function coinsView(): View {
   return { embeds: [embed], components: rows };
 }
 
-function networkView(asset: string): View {
-  const options = networksFor(asset);
-  if (options.length === 0) return coinsView();
-  // One network means there is no choice to present, so skip straight to the address.
-  if (options.length === 1) return addressView(options[0]);
+function networkView(assetKey: string): View {
+  const entry = findAsset(assetKey);
+  if (!entry) return coinsView();
+  // One network is not a question, so skip straight to the request.
+  if (entry.networks.length === 1) return requestView(entry.asset, entry.networks[0]);
 
   const embed = new EmbedBuilder()
     .setColor(BRAND)
-    .setTitle(`${options[0].asset}: choose a network`)
+    .setTitle(`${entry.asset}: which network?`)
     .setDescription(
-      `**${options[0].asset}** exists on more than one network, and they are not interchangeable.\n\n` +
-      'Pick the one you will actually send from. Sending on the wrong network loses the funds permanently.',
+      `**${entry.asset}** exists on more than one network and they are not interchangeable.\n\n` +
+      'Pick the one you will actually send from. Sending over the wrong network loses the funds permanently, so choose the one your wallet shows.',
     );
+
   const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
-  for (const o of options.slice(0, 5)) {
+  for (const n of entry.networks.slice(0, 5)) {
     row.addComponents(
-      new ButtonBuilder().setCustomId(idFor(o)).setLabel(o.network.slice(0, 80)).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(networkCustomId(entry.asset, n)).setLabel(n.slice(0, 80)).setStyle(ButtonStyle.Secondary),
     );
   }
   const back = new ButtonBuilder().setCustomId('don:coins').setLabel('Back to coins').setStyle(ButtonStyle.Secondary);
   return { embeds: [embed], components: [row, backRow(back)] };
 }
 
-function addressView(o: CryptoOption | undefined): View {
-  if (!o) return coinsView();
-
+/** The end of the flow. The answer is stated back, and staff send the address. */
+export function requestView(asset: string, network: string): View {
   const embed = new EmbedBuilder()
     .setColor(BRAND)
-    .setTitle(`${o.asset} on ${o.network}`)
+    .setTitle('Noted')
     .setDescription(
-      `Send **${o.asset}** on the **${o.network}** network to this address, and nothing else. ` +
-      'A different coin, or the right coin on a different network, is lost and cannot be recovered.\n\n' +
-      `\`\`\`\n${o.address}\n\`\`\``,
-    )
-    .setFooter({ text: 'Check the first and last characters against the address in your wallet before you send.' });
-
-  if (o.memo) {
-    embed.addFields({
-      name: 'Memo or tag, required',
-      value: `\`\`\`\n${o.memo}\n\`\`\`\nA transfer without this may not be credited.`,
-    });
-  }
-
-  const back = new ButtonBuilder().setCustomId('don:coins').setLabel('Back to coins').setStyle(ButtonStyle.Secondary);
+      `**${asset}** on **${network}**.\n\n` +
+      'A member of the team will post the address here shortly. Nothing is sent automatically, so wait for it to appear in this ticket.\n\n' +
+      'Never send to an address that reached you any other way, including a direct message. Only what is posted in this channel counts.',
+    );
+  const back = new ButtonBuilder().setCustomId('don:coins').setLabel('Pick a different coin').setStyle(ButtonStyle.Secondary);
   return { embeds: [embed], components: [backRow(back)] };
 }
 
@@ -219,21 +176,52 @@ export async function sendDonationPanel(channel: TextChannel): Promise<void> {
   await channel.send(methodView()).catch((err) => logger.warn('donation panel post failed', { err: (err as Error).message }));
 }
 
-/** Routes every `don:` button. Returns false when the id is not ours. */
+/**
+ * Routes every `don:` button. Returns false when the id is not ours.
+ *
+ * The staff ping happens here rather than when the ticket opens, so nobody is
+ * paged because a member looked at the options and left.
+ */
 export async function handleDonationButton(interaction: ButtonInteraction): Promise<boolean> {
   const id = interaction.customId;
   if (!id.startsWith('don:')) return false;
 
   if (id === 'don:home') { await interaction.update(methodView()); return true; }
-  if (id === 'don:paypal') { await interaction.update(cfg.paypal ? paypalView() : methodView()); return true; }
+  if (id === 'don:paypal') { await interaction.update(paypalView()); return true; }
   if (id === 'don:coins') { await interaction.update(coinsView()); return true; }
-  if (id.startsWith('don:asset:')) { await interaction.update(networkView(id.slice('don:asset:'.length))); return true; }
-  if (id.startsWith('don:addr:')) {
-    const [asset, network] = id.slice('don:addr:'.length).split(':');
-    // findCrypto returning nothing means the file changed under a live button. The
-    // coin list is the right answer there, never a guess at what was meant.
-    await interaction.update(addressView(findCrypto(asset || '', network || '')));
+
+  if (id.startsWith('don:asset:')) {
+    const assetKey = id.slice('don:asset:'.length);
+    const entry = findAsset(assetKey);
+    await interaction.update(networkView(assetKey));
+    // A single-network coin resolves straight to a request, so it needs the ping too.
+    if (entry && entry.networks.length === 1) await pingStaff(interaction, entry.asset, entry.networks[0]);
     return true;
   }
+
+  if (id.startsWith('don:net:')) {
+    const [assetKey, networkKey] = id.slice('don:net:'.length).split(':');
+    const entry = findAsset(assetKey || '');
+    const network = findNetwork(assetKey || '', networkKey || '');
+    // An unknown pair means the catalog changed under a live button. Showing the
+    // coin list again is the right answer, never a guess at what was meant.
+    if (!entry || !network) { await interaction.update(coinsView()); return true; }
+    await interaction.update(requestView(entry.asset, network));
+    await pingStaff(interaction, entry.asset, network);
+    return true;
+  }
+
   return false;
+}
+
+async function pingStaff(interaction: ButtonInteraction, asset: string, network: string): Promise<void> {
+  const staff = (process.env.STAFF_ROLE_ID || '').trim();
+  const channel = interaction.channel as TextChannel | null;
+  if (!channel || !channel.isTextBased?.()) return;
+
+  const mention = staff ? `<@&${staff}> ` : '';
+  await channel.send({
+    content: `${mention}<@${interaction.user.id}> would like to donate **${asset}** on **${network}**. Please post the receiving address here.`,
+    allowedMentions: { roles: staff ? [staff] : [], users: [interaction.user.id] },
+  }).catch((err) => logger.warn('donation staff ping failed', { err: (err as Error).message }));
 }

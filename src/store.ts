@@ -48,7 +48,7 @@ interface BotState {
   introChannelId: string | null;
 }
 
-export const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const FILE = path.join(DATA_DIR, 'state.json');
 
 function load(): BotState {

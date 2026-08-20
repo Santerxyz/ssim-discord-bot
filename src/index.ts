@@ -13,7 +13,7 @@ import { bindAnnounceClient, initAnnounce } from './announce';
 import { startHttpServer } from './httpServer';
 import { sweepAutoClose, trackActivity } from './tickets';
 import { cacheInvites, onMemberAdd, onMemberRemove, trackInviteCreate, trackInviteDelete } from './members';
-import { loadDonations, donationsConfigured } from './donations';
+import { donationsConfigured } from './donations';
 
 async function main(): Promise<void> {
   if (process.argv.includes('--register-only')) {
@@ -36,10 +36,8 @@ async function main(): Promise<void> {
     ],
   });
 
-  // Read before the gateway is up, so the first /panel already knows whether the
-  // donation topic has anything behind it.
-  loadDonations();
   if (!donationsConfigured()) logger.warn('no donation methods configured, the donation topic is hidden from the panel');
+  else if (!process.env.DONATE_PAYPAL_URL) logger.info('DONATE_PAYPAL_URL is unset, so only the crypto option is offered');
 
   let ready = false;
   startHttpServer(() => ready); // up immediately so /health works even before the gateway connects

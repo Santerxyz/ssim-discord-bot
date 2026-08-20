@@ -14,6 +14,7 @@ import { memberHasStaff } from './perms';
 import { handleCommand } from './commands';
 import { categoryById, createTicket, claimTicket, closeTicket } from './tickets';
 import { handlePostModal } from './post';
+import { handleDonationButton } from './donations';
 
 export async function handleInteraction(interaction: Interaction): Promise<void> {
   try {
@@ -52,6 +53,7 @@ async function openTicket(
 // ── Buttons ─────────────────────────────────────────────────────────────────────
 async function onButton(interaction: ButtonInteraction): Promise<void> {
   const id = interaction.customId;
+  if (await handleDonationButton(interaction)) return;
   if (id.startsWith('ticket:open:')) return openTicket(interaction, id.slice('ticket:open:'.length));
   switch (id) {
     case 'ticket:claim': return onClaimButton(interaction);

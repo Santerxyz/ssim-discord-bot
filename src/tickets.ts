@@ -13,6 +13,7 @@ import { store, Ticket } from './store';
 import { logger } from './logger';
 import { BRAND } from './util';
 import { audit } from './audit';
+import { donationsConfigured, sendDonationPanel } from './donations';
 
 export function categoryById(id: string): TicketCategory | undefined {
   return TICKET_CATEGORIES.find((c) => c.id === id);
@@ -22,38 +23,60 @@ const pad4 = (n: number) => String(n).padStart(4, '0');
 const cleanName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'user';
 
 // ── The persistent panel ──────────────────────────────────────────────────────
-// One topic gets a single button, because a dropdown holding one option asks the
-// reader to make a choice that does not exist. Two or more get the select menu,
-// which is what TICKET_CATEGORIES is for. Either way the next click opens the
-// ticket: there is no separate confirmation step, since the panel already names
-// every topic and createTicket() returns the existing channel on a second press.
+// Topics a member can actually act on right now. A topic that depends on donation
+// methods is hidden until some exist, because a button that leads to "not set up
+// yet" is worse than no button.
+export function visibleCategories(): TicketCategory[] {
+  return TICKET_CATEGORIES.filter((c) => !c.needsDonations || donationsConfigured());
+}
+
+const STYLES = {
+  primary: ButtonStyle.Primary,
+  secondary: ButtonStyle.Secondary,
+  success: ButtonStyle.Success,
+} as const;
+
+// Up to five topics become one button each, since a button is a single click and
+// says what it does. Beyond five they will not fit on a row, so they fall back to
+// the select menu. Either way the next click opens the ticket: there is no separate
+// confirmation, because the panel already names every topic and createTicket()
+// returns the existing channel on a second press.
 export function buildPanel(): { embeds: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] } {
-  const only = TICKET_CATEGORIES.length === 1 ? TICKET_CATEGORIES[0] : undefined;
+  const cats = visibleCategories();
+  const only = cats.length === 1 ? cats[0] : undefined;
+
   const embed = new EmbedBuilder()
     .setColor(BRAND)
-    .setTitle('Support')
+    .setTitle(cats.length > 1 ? 'Support and donations' : 'Support')
     .setDescription(
       only
         ? `${only.description}.\n\nOpening a ticket creates a private channel between you and our team.`
-        : 'Open a private ticket with our team. Select a topic below to begin.\n\n' +
-          TICKET_CATEGORIES.map((c) => `**${c.label}**\n${c.description}`).join('\n\n'),
+        : cats.map((c) => `**${c.label}**\n${c.description}`).join('\n\n') +
+          '\n\nEach one opens a private channel that only you and our team can see.',
     )
     .setFooter({ text: 'SSIM' });
 
-  const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
-  if (only) {
-    row.addComponents(
-      new ButtonBuilder().setCustomId(`ticket:open:${only.id}`).setLabel('Open a ticket').setStyle(ButtonStyle.Primary),
-    );
+  const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+  if (cats.length <= 5) {
+    const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
+    for (const c of cats) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`ticket:open:${c.id}`)
+          .setLabel(only ? 'Open a ticket' : c.label)
+          .setStyle(STYLES[c.style ?? 'secondary']),
+      );
+    }
+    rows.push(row);
   } else {
-    row.addComponents(
+    rows.push(new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId('ticket:select')
         .setPlaceholder('Select a topic to continue')
-        .addOptions(TICKET_CATEGORIES.map((c) => ({ label: c.label, value: c.id, description: c.description }))),
-    );
+        .addOptions(cats.map((c) => ({ label: c.label, value: c.id, description: c.description }))),
+    ));
   }
-  return { embeds: [embed], components: [row] };
+  return { embeds: [embed], components: rows };
 }
 
 export async function postPanel(client: Client): Promise<TextChannel> {
@@ -122,6 +145,8 @@ export async function createTicket(
     components: [row],
     allowedMentions: { users: [opener.id], roles: category.staffPing ? [config.roles.staff] : [] },
   });
+
+  if (category.donationPanel) await sendDonationPanel(channel);
 
   await audit(guild.client, 'ticket_open', { ticket: `#${pad4(number)}`, category: category.label, opener: opener.tag });
   return channel;

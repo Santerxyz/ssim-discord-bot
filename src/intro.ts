@@ -15,33 +15,19 @@ import { logger } from './logger';
 /** Discord rejects anything over 2000 characters, so this is checked before sending. */
 export const INTRO = `**SSIM**
 
-SSIM is a Windows application for anyone running more Steam accounts than they can sensibly sign into one at a time. Inventories, trade locks, trading and the Steam Market, for every account you own, in a single window on your own machine.
+SSIM is a Windows app for running many Steam accounts from one window. It handles inventories, trade locks, trading and the Steam Market for every account you own, all on your own machine.
 
-It is not a proof of concept. It runs a live fleet of roughly 544 accounts, and nearly everything in it exists because that fleet needed it.
+I built SSIM for myself. For personal reasons I no longer use it that way, so it is now here for the community. I maintain it in my free time.
 
-**What you can do with it**
+That is why it is free. Donations help with the running costs, but nobody has to give anything. Every feature is free either way.
 
-See every account's CS2 inventory at once, with the trade-lock state of each item. Send trades in bulk, with balances and locks checked before anything leaves. Place buy orders, sell at the lowest price or a fixed net payout, and cancel across the whole fleet in one go, priced in each account's own wallet currency. Keep credentials in an encrypted vault and give each account its own proxy.
+The source code is public under Apache-2.0. There are no keys and no paid version. Your passwords and 2FA secrets stay encrypted on your own disk. They are only sent to Steam when you log in.
 
-**Getting it**
-
-The current build is in the downloads channel. Every release comes from the GitHub repository and nowhere else, and each one ships a SHA256SUMS file. Check yours against it before you run it. SSIM holds Steam passwords and 2FA secrets, so a copy that reached you any other way is not worth the risk, whoever sent it.
+The current build is in the downloads channel. Before you run it, check your file against the SHA256SUMS file on the release page. SSIM handles your Steam login, so never use a copy from anywhere else.
 
 <https://github.com/Santerxyz/SSIM>
 
-**What it costs**
-
-Nothing. Apache-2.0, no keys, no tiers, nothing held back for a paid version. The source is public, so you can read what it does with your credentials before deciding to trust it with them.
-
-**Before you start**
-
-Everything runs locally. Passwords and 2FA secrets are encrypted on your disk and go nowhere except Steam itself, at login. No server of ours ever sees them.
-
-And running a fleet through any tool carries real risk. Steam can restrict or ban accounts, and nothing here changes that. Start with a couple of accounts, get a feel for how it behaves, and scale up once you are comfortable.
-
-**If something breaks**
-
-Open a ticket. Say which version you are on and what you were doing when it stopped working. Bug reports get read and they are useful.`;
+If something breaks or you have a question, open a ticket. Enjoy SSIM.`;
 
 export const INTRO_LIMIT = 2000;
 

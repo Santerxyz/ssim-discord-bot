@@ -40,11 +40,19 @@ the project as an ordinary message rather than an embed, since an embed narrows 
 column and greys the text at that length. Running it again edits what is already
 there instead of posting a second copy.
 
-**Support tickets.** A panel with one button. A member clicks it and gets a private
-channel with staff, no menus and no confirmation step in between. Tickets can be
-claimed, users can be added or removed, and closing one produces an HTML transcript
-that goes to the staff log channel and to the person who opened it. Optional
-inactivity auto-close posts a warning first and gives a two hour grace period.
+**Support tickets.** A panel of buttons, one per topic. A member clicks and gets a
+private channel with staff, no menus and no confirmation step in between. Tickets
+can be claimed, users can be added or removed, and closing one produces an HTML
+transcript that goes to the staff log channel and to the person who opened it.
+Optional inactivity auto-close posts a warning first and gives a two hour grace
+period.
+
+**Donations, handled in private.** A donation topic opens a ticket carrying the
+payment methods: PayPal, or crypto narrowed down by coin and then by network. Each
+address appears in a copyable block with the network stated plainly, because
+sending the right coin over the wrong chain loses it. Addresses are read from a
+local file that is never committed, and the topic hides itself entirely until you
+have configured one. See [donations](#donations).
 
 **Staff posts.** `/post` publishes a branded embed under a short name, and
 running `/post` with the same name again reopens the editor prefilled and edits
@@ -290,6 +298,61 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 `GET /health` returns `{"ok":true,"ready":<bool>}` and needs no signature.
 `ready` turns true once the gateway connection is up.
 
+## Donations
+
+The donation topic is off until you configure it. Copy the example and fill it in:
+
+```bash
+cp donations.example.json data/donations.json
+```
+
+```json
+{
+  "paypal": "https://paypal.me/yourname",
+  "crypto": [
+    { "asset": "BTC",  "network": "Bitcoin",          "address": "bc1..." },
+    { "asset": "USDT", "network": "Tron (TRC20)",     "address": "T..."   },
+    { "asset": "USDT", "network": "Ethereum (ERC20)", "address": "0x..."  }
+  ]
+}
+```
+
+Restart the bot, then run `/panel` again so the panel picks up the new topic.
+
+`data/` is gitignored, so your addresses stay on your machine. Drop any method you
+do not offer. Delete the file and the donation topic disappears from the panel
+rather than becoming a button that leads nowhere. `memo` is optional and only
+applies to chains that need a memo or destination tag, such as XRP or XLM.
+
+Write the `network` string the way the donor's wallet writes it, because that is
+the string they have to match.
+
+### What a donor sees
+
+The topic opens a private ticket with the methods in it. Crypto narrows down in two
+steps, coin and then network, and a coin with only one network skips the second step
+rather than asking a question with one answer. The address arrives in a code block,
+which is what makes it copyable on mobile, under a line naming the exact coin and
+network it accepts.
+
+Nothing about this pages staff. `staffPing` is off for the topic, since somebody
+reading payment options is not an event anyone needs to be pulled into.
+
+### Why the addresses live in a file
+
+Addresses are read from `data/donations.json` and from nowhere else. They cannot be
+set by a command, a message, or anything else reaching the bot over the network.
+
+This is the one part of the bot where a bug costs somebody real money, and a wrong
+address fails silently: the donor sees a successful send and the funds are simply
+gone. So the buttons carry the coin and network, never a position in the list. Edit
+the file, reorder it, add coins, and a button posted last week still resolves to the
+same address. Renaming a coin or a network breaks old buttons instead, and a broken
+button shows the coin list again. That is the safe direction to fail.
+
+Two entries with the same coin and network are indistinguishable to a button, so the
+second is dropped with a warning at startup rather than shadowing the first.
+
 ## Members
 
 Set `MEMBER_ROLE_ID` and everyone who joins is given that role. Bots are skipped,
@@ -463,11 +526,18 @@ runs from source and reloads on change. The full set of scripts:
 | `npm run typecheck` | `tsc --noEmit` |
 
 The tests cover the pure logic: announcement formatting, semver comparison, HMAC
-verification, and note sanitisation. Two of them pin the properties the announcement
-edit relies on, that an unchanged release renders byte-identically and an edited one
-does not, since a body that varied on its own would make the bot edit the message on
-every poll. Nothing in the suite touches Discord or the network, so `npm test` runs
-offline and without a token.
+verification, note sanitisation, and donation address resolution. Two of them pin the
+properties the announcement edit relies on, that an unchanged release renders
+byte-identically and an edited one does not, since a body that varied on its own
+would make the bot edit the message on every poll.
+
+The donation tests carry the most weight, because that is where a bug costs money
+rather than time. The one worth reading asserts that an address button still resolves
+to the same address after the config file has been reordered and extended, which is
+the failure a positional lookup would have introduced.
+
+Nothing in the suite touches Discord or the network, so `npm test` runs offline and
+without a token.
 
 ### Project layout
 
@@ -481,6 +551,7 @@ src/announce.ts      the idempotent announce reconciler and downloads message
 src/httpServer.ts    POST /internal/announce and GET /health
 src/tickets.ts       panel, lifecycle, transcripts, auto-close
 src/members.ts       join and leave handling, the member role, invite attribution
+src/donations.ts     donation methods, read from a local file, and their buttons
 src/intro.ts         the standing introduction text and its /intro editor
 src/post.ts          the /post editor
 src/commands.ts      slash command definitions, registration, staff handlers
@@ -493,9 +564,13 @@ src/index.ts         entry point
 
 Ticket topics are data, not code. Add or remove entries in `TICKET_CATEGORIES` in
 [`src/config.ts`](src/config.ts) and the panel and the channel naming both follow.
-The panel adapts to how many there are: a single topic renders as one **Open a
-ticket** button, and two or more render as a select menu listing them. Either way
-the next click opens the ticket.
+The panel adapts to how many there are: up to five topics become one button each,
+and beyond five they will not fit on a row so they fall back to a select menu.
+Either way the next click opens the ticket.
+
+A topic can set `style` for its button colour, `staffPing` to decide whether
+opening it pages staff, `donationPanel` to post the payment methods into the new
+ticket, and `needsDonations` to hide itself while no methods are configured.
 
 Keep the `id` of an existing topic stable, because it is embedded in the
 interaction custom IDs of panels already posted. Changing a `label` or a

@@ -23,6 +23,9 @@ export interface TicketCategory {
   description: string; // one line under the label
   intro: string;       // first bot message inside the ticket
   staffPing: boolean;  // ping STAFF_ROLE_ID on open
+  style?: 'primary' | 'secondary' | 'success';  // panel button colour
+  donationPanel?: boolean;  // also post the donation methods when the ticket opens
+  needsDonations?: boolean; // hide from the panel unless donation methods are configured
 }
 
 // Add, remove, or rename here (keep `id` stable). No code change needed: one entry
@@ -31,10 +34,19 @@ export interface TicketCategory {
 // id must stay stable even if its label changes.
 export const TICKET_CATEGORIES: TicketCategory[] = [
   {
-    id: 'support', label: 'Support',
-    description: 'Questions, technical issues, or assistance',
-    intro: 'Please describe your request in as much detail as possible, and a member of our team will assist you shortly.',
+    id: 'support', label: 'Support', style: 'primary',
+    description: 'Questions, technical issues, or anything not working',
+    intro: 'Describe your request in as much detail as you can, and a member of our team will get to you shortly.',
     staffPing: true,
+  },
+  {
+    id: 'donation', label: 'Donate', style: 'success',
+    description: 'Contribute to SSIM',
+    intro: 'Thank you for considering it. The methods are below. Nobody is notified when you open this, so take your time, and close the ticket whenever you are done.',
+    // Nobody needs paging because somebody opened the donation options.
+    staffPing: false,
+    donationPanel: true,
+    needsDonations: true,
   },
 ];
 

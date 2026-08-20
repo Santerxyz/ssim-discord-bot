@@ -21,3 +21,7 @@ Thumbs.db
 .vscode/
 .idea/
 .claude/
+
+# A local backup folder was accidentally staged once. It contains .env copies.
+# Never track it, and preferably keep it outside the repository entirely.
+ENV backups/
